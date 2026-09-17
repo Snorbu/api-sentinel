@@ -2,6 +2,7 @@ import { runCheck, type CheckDeps } from './commands.js';
 import { loadConfig } from './config.js';
 import { fetchSpec } from './fetchSpec.js';
 import { saveSnapshot } from './snapshot.js';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export interface CliArgs {
@@ -109,6 +110,26 @@ async function runMain(argv: string[]): Promise<number> {
     return res.exitCode;
   }
 
+  if (cmd === 'init') {
+    const { generateConfig, SPEC_REGISTRY } = await import('./init.js');
+    const { writeFileSync, existsSync } = await import('node:fs');
+    const outPath = String(args.out ?? 'apis.yaml');
+    if (existsSync(outPath) && args.force === undefined) {
+      console.error(`error: ${outPath} already exists (use --force to overwrite)`);
+      return 2;
+    }
+    let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } = {};
+    try {
+      pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+    } catch {
+      // no package.json — skeleton config
+    }
+    writeFileSync(outPath, generateConfig(pkg));
+    console.log(`wrote ${outPath}. Detected registry vendors: ${Object.keys(SPEC_REGISTRY).join(', ')}`);
+    console.log('next: npx api-sentinel snapshot --config apis.yaml (twice), then check');
+    return 0;
+  }
+
   if (cmd === 'preview') {
     const { startPreviewServer } = await import('./preview.js');
     const baseDeps = previewCheckDeps(args, rootDir);
@@ -192,6 +213,7 @@ async function runMain(argv: string[]): Promise<number> {
   }
 
   console.error(`unknown command: ${cmd}. usage:
+  api-sentinel init      [--out apis.yaml] [--force]
   api-sentinel snapshot --config apis.yaml [--root .]
   api-sentinel check    --config apis.yaml --repo ./ [--out report.md] [--fail-on breaking|additive|none]
   api-sentinel check    --old old.json --new new.json --api demo --repo ./ [--out report.md] [--fail-on ...]
