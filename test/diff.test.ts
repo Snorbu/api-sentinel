@@ -44,8 +44,12 @@ describe('flatten', () => {
 describe('diffSpecs', () => {
   it('detects removed, added and changed leaves', () => {
     const V2 = structuredClone(V1) as typeof V1;
-    // @ts-expect-error mutating fixture
-    delete V2.paths['/v1/charges'].get.responses['200'].content['application/json'].schema.properties.paid;
+    const schema = V2.paths['/v1/charges']!.get!.responses!['200']!.content!['application/json']!.schema as {
+      required: string[];
+      properties: Record<string, unknown>;
+    };
+    delete schema.properties.paid;
+    schema.required = schema.required.filter((m) => m !== 'paid'); // vendor removes field + its required entry
     // @ts-expect-error mutating fixture
     V2.paths['/v1/charges'].get.responses['200'].content['application/json'].schema.properties.status.enum = [
       'succeeded',
