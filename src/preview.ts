@@ -17,10 +17,84 @@ function inline(s: string): string {
     .join('');
 }
 
+function parseCounts(report: string): { breaking: number; additive: number; cosmetic: number } | null {
+  const m = report.match(/- breaking:\s*(\d+),\s*additive:\s*(\d+),\s*cosmetic:\s*(\d+)/);
+  return m ? { breaking: Number(m[1]), additive: Number(m[2]), cosmetic: Number(m[3]) } : null;
+}
+
+function fetchTime(report: string): string | null {
+  const m = report.match(/- fetched at:\s*(\S+)/);
+  return m ? m[1]! : null;
+}
+
+function apiName(report: string): string {
+  const m = report.match(/^# API Sentinel report — (.+)$/m);
+  return m ? m[1]! : 'unknown';
+}
+
+function isErrorReport(report: string): boolean {
+  return /^\s*error:\s/m.test(report);
+}
+
+function verdictHtml(report: string): string {
+  const name = escapeHtml(apiName(report));
+  const ts = fetchTime(report);
+  const checkedAttr = ts ? escapeHtml(ts) : '';
+  const time = ts
+    ? escapeHtml(new Date(ts).toLocaleTimeString())
+    : new Date().toLocaleTimeString();
+
+  if (isErrorReport(report)) {
+    return [
+      `<header class="verdict">`,
+      `  <div class="who"><h1>${name}</h1><span class="pulse err" aria-hidden="true"></span><span class="pulse-label err">ERROR</span></div>`,
+      `</header>`,
+      `<section class="error-card"><p><strong>The check failed.</strong> Nothing was broken by a vendor — the sentinel itself couldn't complete its run.</p>`,
+      `<p class="mono">${escapeHtml(report.match(/^\s*error:\s*(.+)$/m)?.[1]?.trim() ?? 'unknown error')}</p></section>`,
+      `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
+    ].join('\n');
+  }
+
+  const counts = parseCounts(report);
+  if (!counts) {
+    return [
+      `<header class="verdict">`,
+      `  <div class="who"><h1>${name}</h1><span class="pulse" aria-hidden="true"></span><span class="pulse-label">LIVE</span></div>`,
+      `</header>`,
+      `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
+    ].join('\n');
+  }
+
+  const { breaking, additive, cosmetic } = counts;
+  const state = breaking > 0 ? 'bad' : 'ok';
+  const stateLabel = breaking > 0 ? 'BREAKING CHANGES' : 'ALL CLEAR';
+  const chips = [
+    `<span class="chip chip-breaking${breaking === 0 ? ' zero' : ''}"><span>breaking</span><strong>${breaking}</strong></span>`,
+    `<span class="chip chip-additive${additive === 0 ? ' zero' : ''}"><span>additive</span><strong>${additive}</strong></span>`,
+    `<span class="chip chip-cosmetic${cosmetic === 0 ? ' zero' : ''}"><span>cosmetic</span><strong>${cosmetic}</strong></span>`,
+  ].join('\n      ');
+  return [
+    `<header class="verdict ${state}">`,
+    `  <div class="who">`,
+    `    <h1>${name}</h1>`,
+    `    <span class="pulse" aria-hidden="true"></span><span class="pulse-label">${state === 'ok' ? 'LIVE' : 'LIVE'}</span>`,
+    `  </div>`,
+    `  <p class="state ${state === 'ok' ? 'all-clear' : 'all-broken'}">${
+      state === 'ok' ? 'All clear — no breaking changes.' : 'Breaking changes detected in your dependencies.'
+    }</p>`,
+    `  <div class="chips" role="list" aria-label="change counts">`,
+    `      ${chips}`,
+    `  </div>`,
+    `</header>`,
+    `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
+  ].join('\n');
+}
+
 /** Markdown -> HTML body fragment (headings, lists, code spans, paragraphs). Pure. */
 export function renderReportBody(report: string): string {
   const body: string[] = [];
   let inList = false;
+  let suppressHeading = false;
   const closeList = (): void => {
     if (inList) {
       body.push('</ul>');
@@ -29,12 +103,14 @@ export function renderReportBody(report: string): string {
   };
   for (const raw of report.split('\n')) {
     const line = raw.trimEnd();
+    if (line.startsWith('# ') || /^- (spec|fetched at|breaking):/.test(line)) {
+      closeList();
+      suppressHeading = line.startsWith('# ');
+      continue; // verdict header replaces h1 + meta lines
+    }
     if (line.startsWith('## ')) {
       closeList();
       body.push(`<h2>${inline(line.slice(3))}</h2>`);
-    } else if (line.startsWith('# ')) {
-      closeList();
-      body.push(`<h1>${inline(line.slice(2))}</h1>`);
     } else if (line.startsWith('- ')) {
       if (!inList) {
         body.push('<ul>');
@@ -49,22 +125,74 @@ export function renderReportBody(report: string): string {
     }
   }
   closeList();
-  return body.join('\n');
+  return verdictHtml(report) + '\n' + body.join('\n');
 }
 
 /** Full dark-theme page with a 5s live-refresh script. Pure. */
 export function renderReportHtml(report: string): string {
   return [
     '<!doctype html>',
-    '<html><head><meta charset="utf-8"><title>api-sentinel</title>',
+    '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<title>api-sentinel — live report</title>',
     '<style>',
-    ':root { color-scheme: dark; }',
-    'body { font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0d1117; color: #e6edf3; margin: 0; padding: 32px; }',
-    'main { max-width: 900px; }',
-    'h1 { font-size: 18px; color: #58a6ff; } h2 { font-size: 15px; color: #f0883e; margin-top: 24px; }',
-    'code { background: #161b22; border: 1px solid #30363d; border-radius: 4px; padding: 1px 5px; }',
-    'ul { padding-left: 20px; } li { margin: 4px 0; }',
-    '.meta { color: #8b949e; font-size: 12px; margin-bottom: 16px; }',
+    ':root {',
+    '  color-scheme: dark;',
+    '  --bg: #0A0E16; --panel: #0F1522; --panel-edge: #1C2636;',
+    '  --ink: #DCE3EE; --ink-dim: #8B98AC; --ink-faint: #5B677A;',
+    '  --red: #FF6B6B; --red-deep: #E5484D;',
+    '  --amber: #FFB224; --green: #3DD68C; --blue: #6BA9F2;',
+    '}',
+    '* { box-sizing: border-box; }',
+    'body { background: var(--bg); color: var(--ink); margin: 0; padding: 40px 24px 64px;',
+    '  font: 15px/1.6 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; }',
+    'main { max-width: 860px; margin: 0 auto; }',
+    'h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }',
+    'h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;',
+    '  color: var(--ink-dim); margin: 36px 0 12px; }',
+    '.mono, code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
+    '',
+    '/* verdict */',
+    '.verdict { padding: 8px 0 20px; }',
+    '.verdict .who { display: flex; align-items: baseline; gap: 14px; }',
+    '.state { margin: 6px 0 18px; font-size: 16px; color: var(--ink-dim); }',
+    '.state.all-clear { color: var(--green); }',
+    '.state.all-broken { color: var(--red); font-weight: 500; }',
+    '.chips { display: flex; gap: 10px; flex-wrap: wrap; }',
+    '.chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;',
+    '  border: 1px solid var(--panel-edge); border-radius: 8px; background: var(--panel);',
+    '  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }',
+    '.chip span { color: var(--ink-dim); }',
+    '.chip strong { font-size: 15px; }',
+    '.chip-breaking strong { color: var(--red); } .chip-breaking { border-color: color-mix(in srgb, var(--red) 35%, transparent); }',
+    '.chip-additive strong { color: var(--amber); }',
+    '.chip-cosmetic strong { color: var(--ink-dim); }',
+    '.chip.zero { opacity: 0.45; }',
+    '',
+    '/* pulse */',
+    '.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); align-self: center;',
+    '  animation: pulse 2s ease-in-out infinite; }',
+    '.pulse-label { font-size: 10px; letter-spacing: 0.1em; color: var(--green); font-weight: 600; }',
+    '.pulse.err { background: var(--red-deep); animation: none; }',
+    '.pulse-label.err { color: var(--red-deep); }',
+    '@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }',
+    '@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }',
+    '',
+    '/* sections */',
+    '.breaking-panel { background: var(--panel); border: 1px solid color-mix(in srgb, var(--red) 30%, var(--panel-edge));',
+    '  border-left: 3px solid var(--red-deep); border-radius: 10px; padding: 4px 20px; }',
+    '.breaking-panel h2 { margin-top: 16px; color: var(--red); }',
+    'ul { list-style: none; margin: 0; padding: 0; }',
+    'li { padding: 9px 0; border-bottom: 1px solid var(--panel-edge); margin: 0; font-size: 13px;',
+    '  font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-dim); }',
+    'li:last-child { border-bottom: none; }',
+    'p { margin: 8px 0; }',
+    'code { font-size: 12px; background: transparent; border: none; padding: 0; color: var(--ink); }',
+    '.meta { color: var(--ink-faint); font-size: 12px; margin: 4px 0 8px;',
+    '  font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
+    '.error-card { background: var(--panel); border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);',
+    '  border-radius: 10px; padding: 16px 20px; }',
+    '.error-card p { margin: 4px 0; }',
+    '.error-card .mono { color: var(--red); font-size: 13px; }',
     '</style></head>',
     '<body><main id="report">',
     renderReportBody(report),
@@ -74,6 +202,8 @@ export function renderReportHtml(report: string): string {
     '  try {',
     '    const j = await (await fetch("/api/report")).json();',
     '    document.getElementById("report").innerHTML = j.body;',
+    '    const ts = document.querySelector("#checked")?.getAttribute("data-ts");',
+    '    if (ts) document.title = "api-sentinel — " + new Date(ts).toLocaleTimeString();',
     '  } catch (e) { /* server restarting */ }',
     '}, 5000);',
     '</script>',

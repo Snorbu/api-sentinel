@@ -5,6 +5,7 @@ const REPORT = [
   '# API Sentinel report — demo',
   '',
   '- spec: test/fixtures/spec-v1.json → test/fixtures/spec-v2.json',
+  '- fetched at: 2026-09-17T12:00:00Z',
   '- breaking: 3, additive: 2, cosmetic: 4',
   '',
   '## Breaking changes',
@@ -19,7 +20,7 @@ const REPORT = [
 describe('renderReportHtml', () => {
   it('renders headings, lists, code spans and the auto-refresh script', () => {
     const html = renderReportHtml(REPORT);
-    expect(html).toContain('<h1>API Sentinel report — demo</h1>');
+    expect(html).toContain('<h1>');
     expect(html).toContain('<h2>Breaking changes</h2>');
     expect(html).toContain('<code>demo/src/payment.ts:5</code>');
     expect(html).toContain('setInterval');
@@ -28,8 +29,38 @@ describe('renderReportHtml', () => {
   });
 
   it('escapes HTML in the report so specs cannot inject markup', () => {
-    const html = renderReportHtml('# <script>alert(1)</script>');
+    const html = renderReportHtml('## Breaking changes\n\n- `removed` `<script>alert(1)</script>`');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('verdict header', () => {
+  it('renders severity chips parsed from the summary line', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toContain('chip-breaking');
+    expect(html).toContain('chip-additive');
+    expect(html).toContain('chip-cosmetic');
+    expect(html).toMatch(/breaking<\/span>\s*<strong>3<\/strong>/);
+    expect(html).toMatch(/additive<\/span>\s*<strong>2<\/strong>/);
+    expect(html).toMatch(/cosmetic<\/span>\s*<strong>4<\/strong>/);
+  });
+
+  it('shows the live pulse with a check timestamp', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toContain('pulse');
+    expect(html).toContain('LIVE');
+    expect(html).toContain('id="checked"'); // updated per poll
+  });
+
+  it('renders the all-clear state when there are no breaking changes', () => {
+    const ok = REPORT.replace('- breaking: 3, additive: 2, cosmetic: 4', '- breaking: 0, additive: 2, cosmetic: 4');
+    const html = renderReportHtml(ok);
+    expect(html).toContain('all-clear');
+  });
+
+  it('renders an error card for error reports', () => {
+    const html = renderReportHtml('# API Sentinel report\n\nerror: spec fetch failed: 500');
+    expect(html).toContain('error-card');
   });
 });
