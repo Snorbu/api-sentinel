@@ -3,14 +3,18 @@ import { relative, resolve } from 'node:path';
 import { diffSpecs, type SpecChange } from './diff.js';
 import { buildFixPrompt, parseFixResponse, type FixPatch } from './fix.js';
 import { applyFixes } from './applyFix.js';
+import { loadConfig } from './config.js';
+import { loadPreviousSnapshot, loadSnapshot } from './snapshot.js';
 import { filterChanges, filterHits, filterTokens, loadIgnore } from './ignore.js';
 import { extractTokens, scanRepo, type UsageHit } from './scan.js';
 
 export interface FixDeps {
   rootDir: string;
   repoDir: string;
-  oldPath: string;
-  newPath: string;
+  /** Fixture mode: explicit spec files. Config mode: configPath + snapshot diffing. */
+  oldPath?: string;
+  newPath?: string;
+  configPath?: string;
   apiName: string;
   dryRun: boolean;
   llm: (prompt: string) => Promise<string>;
@@ -29,9 +33,26 @@ export interface FixResult {
 }
 
 export async function runFix(deps: FixDeps): Promise<FixResult> {
-  void deps.rootDir; // snapshots unused in fixture mode; kept for future config-mode support
-  const oldSpec = JSON.parse(readFileSync(deps.oldPath, 'utf8')) as unknown;
-  const newSpec = JSON.parse(readFileSync(deps.newPath, 'utf8')) as unknown;
+  let oldSpec: unknown;
+  let newSpec: unknown;
+  if (deps.oldPath && deps.newPath) {
+    oldSpec = JSON.parse(readFileSync(deps.oldPath, 'utf8')) as unknown;
+    newSpec = JSON.parse(readFileSync(deps.newPath, 'utf8')) as unknown;
+  } else if (deps.configPath) {
+    // snapshot mode: diff previous vs current per config entry
+    const cfg = loadConfig(deps.configPath);
+    const first = cfg.apis[0];
+    if (!first) throw new Error('config lists no apis');
+    const prev = loadPreviousSnapshot(deps.rootDir, first.name);
+    const cur = loadSnapshot(deps.rootDir, first.name);
+    if (prev === null || cur === null) {
+      throw new Error(`no previous snapshot for ${first.name} — run snapshot twice first`);
+    }
+    oldSpec = prev;
+    newSpec = cur;
+  } else {
+    throw new Error('fix needs either --old/--new or --config');
+  }
 
   const perChange: FixResult['perChange'] = [];
   const errors: string[] = [];

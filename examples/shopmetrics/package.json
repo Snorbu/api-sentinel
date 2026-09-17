@@ -1,0 +1,6 @@
+{
+  "name": "shopmetrics",
+  "version": "1.0.0",
+  "description": "Demo product: shop analytics service calling PaymentHub over raw HTTP",
+  "private": true
+}

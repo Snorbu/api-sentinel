@@ -1,0 +1,3 @@
+# has_more is a pagination field, our own `data` destructures are fine to keep visible
+# but ignore refunds tests dir
+file **/*.test.ts

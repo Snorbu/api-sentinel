@@ -168,10 +168,11 @@ async function runMain(argv: string[]): Promise<number> {
 
     const interactive = args['dry-run'] === undefined && args.yes === undefined && process.stdin.isTTY === true;
     const dryRun = args['dry-run'] !== undefined || (!interactive && args.yes === undefined);
-    const oldPath = String(args.old ?? resolve('test/fixtures/spec-v1.json'));
-    const newPath = String(args.new ?? resolve('test/fixtures/spec-v2.json'));
-    const apiName = args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api);
     const repoDir = String(args.repo ?? 'demo');
+    const configPath = args.config === undefined ? undefined : String(args.config);
+    const oldPath = args.old === undefined ? undefined : String(args.old);
+    const newPath = args.new === undefined ? undefined : String(args.new);
+    const apiName = args.api === undefined || String(args.api) === '' ? (configPath ? 'api' : 'demo') : String(args.api);
 
     const llm = (prompt: string): Promise<string> =>
       chatCompletion({
@@ -182,7 +183,7 @@ async function runMain(argv: string[]): Promise<number> {
       });
 
     // review mode: patches come back unapplied; the dev accepts them one by one
-    const res = await runFix({ rootDir, repoDir, oldPath, newPath, apiName, dryRun: true, llm });
+    const res = await runFix({ rootDir, repoDir, configPath, oldPath, newPath, apiName, dryRun: true, llm });
 
     for (const pc of res.perChange) {
       console.log(`\n## ${pc.change.kind} — ${pc.change.path}`);

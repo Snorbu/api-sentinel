@@ -1,0 +1,97 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "PaymentHub API", "version": "2.0.0" },
+  "paths": {
+    "/v1/charges": {
+      "get": {
+        "operationId": "listCharges",
+        "responses": {
+          "200": {
+            "description": "A page of charges",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "status": { "type": "string", "enum": ["succeeded", "pending"] },
+                          "amount": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "has_more": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/refunds": {
+      "post": {
+        "operationId": "createRefund",
+        "responses": {
+          "200": {
+            "description": "The created refund",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["customer_id"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "customer_id": { "type": "string" },
+                    "status": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/balance": {
+      "get": {
+        "operationId": "getBalance",
+        "responses": {
+          "200": {
+            "description": "Current balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "available": { "type": "integer" },
+                    "currency": { "type": "string", "description": "ISO 4217 currency code" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/disputes": {
+      "get": {
+        "operationId": "listDisputes",
+        "responses": {
+          "200": {
+            "description": "A page of disputes",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": { "data": { "type": "array" } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
