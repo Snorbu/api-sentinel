@@ -53,7 +53,6 @@ export function applyFixesDetailed(rootDir: string, patches: (FixPatch & { all?:
     }
     let next: string;
     if (p.all === true) {
-      occurrences = content.split(p.find).length - 1;
       next = content.split(p.find).join(p.replace);
     } else {
       const second = content.indexOf(p.find, first + 1);
