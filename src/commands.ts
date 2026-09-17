@@ -4,6 +4,7 @@ import { diffSpecs, type SpecChange } from './diff.js';
 import { exitCodeFor, type FailOn } from './exitCode.js';
 import { filterChanges, filterHits, filterTokens, loadIgnore } from './ignore.js';
 import { buildReport } from './report.js';
+import { detectSdks, sdkAdvice } from './sdkDetect.js';
 import { extractTokens, scanRepo } from './scan.js';
 import { loadPreviousSnapshot, loadSnapshot } from './snapshot.js';
 
@@ -74,6 +75,10 @@ export function runCheck(deps: CheckDeps): CheckResult {
   }
 
   const parts = [...skips.map((s) => `> ${s}`), ...sections];
+  if (entries.length > 0) {
+    const vendors = detectSdks(deps.repoDir);
+    if (vendors.length > 0) parts.push(`> ${sdkAdvice(vendors)}`);
+  }
   if (entries.length === 0 && skips.length === 0) parts.push('> nothing to check: no specs provided');
   const report = parts.join('\n\n');
   if (deps.outPath) writeFileSync(deps.outPath, report);

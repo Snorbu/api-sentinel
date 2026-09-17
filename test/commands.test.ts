@@ -65,3 +65,30 @@ describe('--fail-on', () => {
     expect(fixtureMode().exitCode).toBe(1);
   });
 });
+
+describe('SDK awareness in report', () => {
+  it('mentions detected vendor SDKs and coverage advice', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sdkrep-'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { openai: '^4.0.0' } }));
+    const res = runCheck({
+      rootDir: root,
+      oldPath: resolve('test/fixtures/spec-v1.json'),
+      newPath: resolve('test/fixtures/spec-v2.json'),
+      apiName: 'demo',
+      repoDir: root,
+    });
+    expect(res.report).toContain('Vendor SDK(s) detected: openai');
+  });
+
+  it('says nothing about SDKs when package.json is absent', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sdkrep2-'));
+    const res = runCheck({
+      rootDir: root,
+      oldPath: resolve('test/fixtures/spec-v2.json'),
+      newPath: resolve('test/fixtures/spec-v2.json'),
+      apiName: 'demo',
+      repoDir: root,
+    });
+    expect(res.report).not.toContain('Vendor SDK(s)');
+  });
+});
