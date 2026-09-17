@@ -122,6 +122,44 @@ async function runMain(argv: string[]): Promise<number> {
     await new Promise<void>(() => {}); // keep alive; Ctrl+C exits
   }
 
+  if (cmd === 'fix') {
+    const { chatCompletion } = await import('./llm.js');
+    const { FIX_SYSTEM_PROMPT } = await import('./fix.js');
+    const { runFix } = await import('./fixCommand.js');
+    // safe default: dry-run unless --yes explicitly authorizes real writes
+    const dryRun = args['dry-run'] !== undefined || args.yes === undefined;
+    const oldPath = String(args.old ?? resolve('test/fixtures/spec-v1.json'));
+    const newPath = String(args.new ?? resolve('test/fixtures/spec-v2.json'));
+    const apiName = args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api);
+    const repoDir = String(args.repo ?? 'demo');
+
+    const llm = (prompt: string): Promise<string> =>
+      chatCompletion({
+        messages: [
+          { role: 'system', content: FIX_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      });
+
+    const res = await runFix({ rootDir, repoDir, oldPath, newPath, apiName, dryRun, llm });
+
+    for (const pc of res.perChange) {
+      console.log(`\n## ${pc.change.kind} — ${pc.change.path}`);
+      for (const u of pc.usages) console.log(`   affected: ${u.file}:${u.line}`);
+      for (const p of pc.patches) console.log(`   fix: ${p.explanation}`);
+      if (pc.error) console.log(`   error: ${pc.error}`);
+    }
+    console.log(
+      `\n${dryRun ? 'would apply' : 'applied'}: ${res.appliedCount} patch(es)` +
+        (res.skippedCount > 0 ? `, skipped: ${res.skippedCount}` : ''),
+    );
+    if (dryRun && res.appliedCount > 0) {
+      console.log('re-run with --yes to write the changes');
+    }
+    const unresolved = res.perChange.filter((pc) => pc.patches.length === 0).length;
+    return unresolved > 0 ? 1 : 0;
+  }
+
   console.error(`unknown command: ${cmd}. usage:
   api-sentinel snapshot --config apis.yaml [--root .]
   api-sentinel check    --config apis.yaml --repo ./ [--out report.md] [--fail-on breaking|additive|none]
