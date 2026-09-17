@@ -1,4 +1,4 @@
-import { runCheck } from './commands.js';
+import { runCheck, type CheckDeps } from './commands.js';
 import { loadConfig } from './config.js';
 import { fetchSpec } from './fetchSpec.js';
 import { saveSnapshot } from './snapshot.js';
@@ -53,6 +53,20 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
+export function previewCheckDeps(args: CliArgs, rootDir: string): CheckDeps {
+  const configPath = args.config === undefined ? undefined : String(args.config);
+  if (configPath !== undefined) {
+    return { rootDir, repoDir: String(args.repo ?? rootDir), configPath };
+  }
+  return {
+    rootDir,
+    repoDir: String(args.repo ?? 'demo'),
+    oldPath: String(args.old ?? resolve('test/fixtures/spec-v1.json')),
+    newPath: String(args.new ?? resolve('test/fixtures/spec-v2.json')),
+    apiName: args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api),
+  };
+}
+
 async function runMain(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   const cmd = args._[0] ?? '';
@@ -91,14 +105,10 @@ async function runMain(argv: string[]): Promise<number> {
 
   if (cmd === 'preview') {
     const { startPreviewServer } = await import('./preview.js');
-    const repoDir = String(args.repo ?? 'demo');
-    const oldPath = String(args.old ?? resolve('test/fixtures/spec-v1.json'));
-    const newPath = String(args.new ?? resolve('test/fixtures/spec-v2.json'));
-    const apiName = args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api);
-    const configPath = args.config === undefined ? undefined : String(args.config);
+    const baseDeps = previewCheckDeps(args, rootDir);
     const report = (): string => {
       try {
-        return runCheck({ rootDir, repoDir, configPath, oldPath, newPath, apiName }).report;
+        return runCheck(baseDeps).report;
       } catch (err) {
         return `# API Sentinel report\n\nerror: ${err instanceof Error ? err.message : String(err)}`;
       }

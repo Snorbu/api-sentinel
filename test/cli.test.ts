@@ -20,6 +20,25 @@ describe('parseArgs', () => {
   });
 });
 
+describe('previewCheckDeps', () => {
+  it('fixture mode by default (demo fixtures, demo name)', async () => {
+    const { previewCheckDeps } = await import('../src/cli.js');
+    const deps = previewCheckDeps({ _: ['preview'] }, '/root');
+    expect(deps.oldPath).toContain('spec-v1.json');
+    expect(deps.newPath).toContain('spec-v2.json');
+    expect(deps.apiName).toBe('demo');
+    expect(deps.configPath).toBeUndefined();
+  });
+
+  it('config mode takes precedence: no old/new paths', async () => {
+    const { previewCheckDeps } = await import('../src/cli.js');
+    const deps = previewCheckDeps({ _: ['preview'], config: 'apis.yaml' }, '/root');
+    expect(deps.configPath).toBe('apis.yaml');
+    expect(deps.oldPath).toBeUndefined();
+    expect(deps.newPath).toBeUndefined();
+  });
+});
+
 describe('main error handling', () => {
   it('returns 2 + prints error on unreadable config', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
