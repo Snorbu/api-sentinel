@@ -120,9 +120,10 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 
 ## Roadmap
 
-- **v0.2** — LLM-generated fix PRs (patch the affected call sites, not just report them)
-- **v0.3** — per-vendor agents that also watch changelogs/docs, not just specs
-- **v0.4** — semantically-aware OpenAPI differ (`oneOf` reshuffles, parameter arrays)
+- [x] **v0.1** — snapshot → diff → classify → scan → report CLI + live preview
+- [x] **v0.2** — LLM-generated fixes (`fix` command: patches affected call sites, dry-run default, verbatim-match validation)
+- [ ] **v0.3** — per-vendor agents that also watch changelogs/docs, not just specs
+- [ ] **v0.4** — semantically-aware OpenAPI differ (`oneOf` reshuffles, parameter arrays)
 
 ## Dev
 
