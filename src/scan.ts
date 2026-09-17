@@ -2,7 +2,6 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { classify } from './classify.js';
 import type { SpecChange } from './diff.js';
-
 const EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rb', '.php', '.java']);
 const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'snapshots', 'fixtures', 'test', 'tests', '__tests__']);
 
@@ -56,4 +55,39 @@ export function scanRepo(rootDir: string, tokens: string[]): UsageHit[] {
   };
   visit(rootDir);
   return hits;
+}
+
+export interface TokenRank {
+  token: string;
+  count: number;
+}
+
+/** Count real code usages per token so reports can lead with the biggest blast radius. */
+export function rankTokens(rootDir: string, tokens: string[]): TokenRank[] {
+  const matchers = tokens.map((t) => ({
+    token: t,
+    re: new RegExp(`(^|[^A-Za-z0-9_])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9_]|$)`),
+  }));
+  const counts = new Map<string, number>();
+  const visit = (d: string): void => {
+    for (const entry of readdirSync(d)) {
+      if (SKIP.has(entry)) continue;
+      const full = join(d, entry);
+      if (statSync(full).isDirectory()) {
+        visit(full);
+        continue;
+      }
+      const ext = `.${entry.split('.').pop()}`;
+      if (!EXTS.has(ext)) continue;
+      for (const line of readFileSync(full, 'utf8').split('\n')) {
+        for (const m of matchers) {
+          if (m.re.test(line)) counts.set(m.token, (counts.get(m.token) ?? 0) + 1);
+        }
+      }
+    }
+  };
+  visit(rootDir);
+  return tokens
+    .map((token) => ({ token, count: counts.get(token) ?? 0 }))
+    .sort((a, b) => b.count - a.count);
 }

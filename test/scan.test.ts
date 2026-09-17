@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { extractTokens, scanRepo } from '../src/scan.js';
+import { extractTokens, rankTokens, scanRepo } from '../src/scan.js';
 
 describe('extractTokens', () => {
   it('pulls endpoint URLs and property names from breaking changes only', () => {
@@ -67,5 +67,19 @@ describe('scanRepo precision', () => {
     writeFileSync(join(root, 'keep.ts'), 'const url = "/v1/charges";\n');
     const hits = scanRepo(root, ['/v1/charges']);
     expect(hits.map((h) => h.file)).toEqual([join(root, 'keep.ts')]);
+  });
+});
+
+describe('rankTokens', () => {
+  it('orders tokens by how many lines of code use them, descending', () => {
+    const root = mkdtempSync(join(tmpdir(), 'rank-'));
+    writeFileSync(
+      join(root, 'a.ts'),
+      'const x = body.status;\nconst y = body.status;\nconst z = body.status;\nconst w = body.paid;\n',
+    );
+    const ranked = rankTokens(root, ['paid', 'status']);
+    expect(ranked.map((r) => r.token)).toEqual(['status', 'paid']);
+    expect(ranked.find((r) => r.token === 'status')?.count).toBe(3);
+    expect(ranked.find((r) => r.token === 'paid')?.count).toBe(1);
   });
 });
