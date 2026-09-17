@@ -1,6 +1,6 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runCheck } from '../src/commands.js';
 import { saveSnapshot } from '../src/snapshot.js';
@@ -35,5 +35,33 @@ describe('runCheck', () => {
     saveSnapshot(root, 'a', { paths: {} }, 't2');
     const res = runCheck({ rootDir: root, configPath: cfg, repoDir: root });
     expect(res.exitCode).toBe(1);
+  });
+});
+
+describe('--fail-on', () => {
+  const fixtureMode = (failOn?: 'breaking' | 'additive' | 'none') => {
+    const root = mkdtempSync(join(tmpdir(), 'fo-'));
+    return runCheck({
+      rootDir: root,
+      oldPath: resolve('test/fixtures/spec-v1.json'),
+      newPath: resolve('test/fixtures/spec-v2.json'),
+      apiName: 'demo',
+      repoDir: root,
+      failOn,
+    });
+  };
+
+  it('failOn none: report-only mode still reports breaking but exits 0', () => {
+    const res = fixtureMode('none');
+    expect(res.exitCode).toBe(0);
+    expect(res.report).toContain('Breaking changes');
+  });
+
+  it('failOn additive: additive changes fail the run', () => {
+    expect(fixtureMode('additive').exitCode).toBe(1);
+  });
+
+  it('default (breaking): unchanged contract', () => {
+    expect(fixtureMode().exitCode).toBe(1);
   });
 });

@@ -68,6 +68,11 @@ async function runMain(argv: string[]): Promise<number> {
   }
 
   if (cmd === 'check') {
+    const failOnRaw = args['fail-on'] === undefined ? undefined : String(args['fail-on']);
+    if (failOnRaw !== undefined && !['breaking', 'additive', 'none'].includes(failOnRaw)) {
+      console.error('error: --fail-on must be one of: breaking, additive, none');
+      return 2;
+    }
     const res = runCheck({
       rootDir,
       repoDir: String(args.repo ?? rootDir),
@@ -75,7 +80,8 @@ async function runMain(argv: string[]): Promise<number> {
       outPath: args.out === undefined ? undefined : String(args.out),
       oldPath: args.old === undefined ? undefined : String(args.old),
       newPath: args.new === undefined ? undefined : String(args.new),
-      apiName: args.api === undefined ? undefined : String(args.api),
+      apiName: args.api === undefined || String(args.api) === '' ? undefined : String(args.api),
+      failOn: failOnRaw as 'breaking' | 'additive' | 'none' | undefined,
     });
     if (args.out === undefined) console.log(res.report);
     process.stderr.write(`api-sentinel: exit ${res.exitCode}\n`);
@@ -84,8 +90,9 @@ async function runMain(argv: string[]): Promise<number> {
 
   console.error(`unknown command: ${cmd}. usage:
   api-sentinel snapshot --config apis.yaml [--root .]
-  api-sentinel check    --config apis.yaml --repo ./ [--out report.md]
-  api-sentinel check    --old old.json --new new.json --api demo --repo ./ [--out report.md]`);
+  api-sentinel check    --config apis.yaml --repo ./ [--out report.md] [--fail-on breaking|additive|none]
+  api-sentinel check    --old old.json --new new.json --api demo --repo ./ [--out report.md] [--fail-on ...]
+  api-sentinel preview  [--old o.json --new n.json | --config apis.yaml] [--repo ./] [--port 4173]`);
   return 2;
 }
 

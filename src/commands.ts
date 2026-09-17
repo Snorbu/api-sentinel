@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { classify } from './classify.js';
 import { loadConfig } from './config.js';
 import { diffSpecs, type SpecChange } from './diff.js';
+import { exitCodeFor, type FailOn } from './exitCode.js';
 import { buildReport } from './report.js';
 import { extractTokens, scanRepo } from './scan.js';
 import { loadPreviousSnapshot, loadSnapshot } from './snapshot.js';
@@ -14,6 +14,7 @@ export interface CheckDeps {
   oldPath?: string; // fixture/demo mode
   newPath?: string;
   apiName?: string;
+  failOn?: FailOn;
 }
 
 export interface CheckResult {
@@ -59,7 +60,7 @@ export function runCheck(deps: CheckDeps): CheckResult {
   }
 
   const sections: string[] = [];
-  let anyBreaking = false;
+  let anyFailing = false;
   for (const e of entries) {
     const changes: SpecChange[] = diffSpecs(e.oldSpec, e.newSpec);
     const tokens = extractTokens(changes);
@@ -67,12 +68,12 @@ export function runCheck(deps: CheckDeps): CheckResult {
     sections.push(
       buildReport({ apiName: e.apiName, specUrl: e.specUrl, fetchedAt: e.fetchedAt, changes, usages }),
     );
-    if (changes.some((c) => classify(c) === 'breaking')) anyBreaking = true;
+    if (exitCodeFor(changes, deps.failOn ?? 'breaking') === 1) anyFailing = true;
   }
 
   const parts = [...skips.map((s) => `> ${s}`), ...sections];
   if (entries.length === 0 && skips.length === 0) parts.push('> nothing to check: no specs provided');
   const report = parts.join('\n\n');
   if (deps.outPath) writeFileSync(deps.outPath, report);
-  return { exitCode: anyBreaking ? 1 : 0, report };
+  return { exitCode: anyFailing ? 1 : 0, report };
 }
