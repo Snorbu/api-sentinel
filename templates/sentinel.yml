@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
       # v0.1 installs from the api-sentinel git repo; later: `npx api-sentinel`
-      - run: npm install github:sahilsri/api-sentinel && npx api-sentinel snapshot --config apis.yaml
+      - run: npm install github:Snorbu/api-sentinel && npx api-sentinel snapshot --config apis.yaml
       - run: npx api-sentinel check --config apis.yaml --repo . --out report.md
       - if: failure()
         env:

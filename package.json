@@ -26,7 +26,7 @@
   "description": "Dependabot for APIs \u2014 snapshot vendor OpenAPI specs, detect breaking changes, pinpoint affected code, generate fixes",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sahilsri/api-sentinel.git"
+    "url": "git+https://github.com/Snorbu/api-sentinel.git"
   },
   "keywords": [
     "openapi",
