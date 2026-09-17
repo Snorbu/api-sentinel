@@ -29,8 +29,27 @@ The report lists each breaking change and every file:line in your repo that uses
 - `changed` `...properties.status.enum`
 
 ## Possibly affected code in this repo
-- demo/src/payment.ts:5 — token `paid` — `const body = (await res.json()) as { paid: boolean };`
+- `demo/src/payment.ts:5` — token `paid` — `const body = (await res.json()) as { paid: boolean };`
 ```
+
+## CI gate options
+
+By default `check` exits 1 on **breaking** changes. Loosen or tighten with `--fail-on`:
+
+```bash
+api-sentinel check --fail-on none      # report-only: always exit 0
+api-sentinel check --fail-on additive  # strict: any change fails
+api-sentinel check --fail-on breaking  # default
+```
+
+## Live preview
+
+```bash
+npx tsx src/cli.ts preview        # serves the demo report at http://127.0.0.1:4173 and opens your browser
+npx tsx src/cli.ts preview --config apis.yaml --repo .   # preview against your own snapshots
+```
+
+The page re-runs the check and refreshes every 5 seconds — edit the fixtures and watch it update.
 
 ## Watching a real API
 
