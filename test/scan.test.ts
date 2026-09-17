@@ -46,3 +46,26 @@ describe('scanRepo', () => {
     expect(scanRepo(root, ['/v1/nope'])).toEqual([]);
   });
 });
+
+describe('scanRepo precision', () => {
+  it('does not match tokens inside larger words', () => {
+    const root = mkdtempSync(join(tmpdir(), 'scanp-'));
+    writeFileSync(
+      join(root, 'a.ts'),
+      'const unparsed = 1; // the buyer has already paid today\nconst x = body.paid;\n',
+    );
+    const hits = scanRepo(root, ['paid']);
+    expect(hits.map((h) => h.line)).toEqual([2]);
+  });
+
+  it('skips fixtures and test dirs by default', () => {
+    const root = mkdtempSync(join(tmpdir(), 'scanskip-'));
+    mkdirSync(join(root, 'fixtures'), { recursive: true });
+    mkdirSync(join(root, 'test'), { recursive: true });
+    writeFileSync(join(root, 'fixtures', 'f.ts'), 'const url = "/v1/charges";\n');
+    writeFileSync(join(root, 'test', 't.ts'), 'const url = "/v1/charges";\n');
+    writeFileSync(join(root, 'keep.ts'), 'const url = "/v1/charges";\n');
+    const hits = scanRepo(root, ['/v1/charges']);
+    expect(hits.map((h) => h.file)).toEqual([join(root, 'keep.ts')]);
+  });
+});

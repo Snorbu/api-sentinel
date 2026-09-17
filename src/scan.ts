@@ -4,7 +4,7 @@ import { classify } from './classify.js';
 import type { SpecChange } from './diff.js';
 
 const EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rb', '.php', '.java']);
-const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'snapshots']);
+const SKIP = new Set(['node_modules', '.git', 'dist', 'build', 'snapshots', 'fixtures', 'test', 'tests', '__tests__']);
 
 export interface UsageHit {
   file: string;
@@ -25,8 +25,16 @@ export function extractTokens(changes: SpecChange[]): string[] {
   return [...tokens];
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function scanRepo(rootDir: string, tokens: string[]): UsageHit[] {
   const hits: UsageHit[] = [];
+  const matchers = tokens.map((t) => ({
+    token: t,
+    re: new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(t)}([^A-Za-z0-9_]|$)`),
+  }));
   const visit = (d: string): void => {
     for (const entry of readdirSync(d)) {
       if (SKIP.has(entry)) continue;
@@ -39,7 +47,7 @@ export function scanRepo(rootDir: string, tokens: string[]): UsageHit[] {
       if (!EXTS.has(ext)) continue;
       const lines = readFileSync(full, 'utf8').split('\n');
       lines.forEach((line, i) => {
-        const token = tokens.find((t) => line.includes(t));
+        const token = matchers.find((m) => m.re.test(line))?.token;
         if (token !== undefined) {
           hits.push({ file: full, line: i + 1, token, snippet: line.trim().slice(0, 120) });
         }
