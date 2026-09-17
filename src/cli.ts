@@ -75,10 +75,20 @@ async function runMain(argv: string[]): Promise<number> {
 
   if (cmd === 'snapshot') {
     const cfg = loadConfig(String(args.config ?? 'apis.yaml'));
+    const failed: string[] = [];
     for (const api of cfg.apis) {
-      const spec = await fetchSpec(api.specUrl);
-      const file = saveSnapshot(rootDir, api.name, spec, new Date().toISOString());
-      console.log(`snapshot saved: ${api.name} -> ${file}`);
+      try {
+        const spec = await fetchSpec(api.specUrl);
+        const file = saveSnapshot(rootDir, api.name, spec, new Date().toISOString());
+        console.log(`snapshot saved: ${api.name} -> ${file}`);
+      } catch (err) {
+        failed.push(api.name);
+        console.error(`error: ${api.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (failed.length > 0) {
+      console.error(`snapshot failed for ${failed.length}/${cfg.apis.length} API(s): ${failed.join(', ')}`);
+      return 1;
     }
     return 0;
   }

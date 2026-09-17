@@ -66,3 +66,27 @@ describe('main error handling', () => {
     log.mockRestore();
   });
 });
+
+describe('snapshot failure UX', () => {
+  it('continues past a failing API, reports both outcomes, exits nonzero', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'snapux-'));
+    const cfg = join(root, 'apis.yaml');
+    writeFileSync(
+      cfg,
+      'apis:\n' +
+        '  - name: bad\n    specUrl: http://127.0.0.1:1/unreachable.json\n' +
+        '  - name: alsobad\n    specUrl: http://127.0.0.1:1/unreachable2.json\n',
+    );
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const code = await main(['snapshot', '--config', cfg, '--root', root]);
+    expect(code).toBe(1);
+    const errText = err.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(errText).toContain('bad');
+    log.mockRestore();
+    err.mockRestore();
+  });
+});
