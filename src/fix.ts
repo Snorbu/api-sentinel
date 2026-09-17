@@ -83,9 +83,17 @@ export function parseFixResponse(raw: string, files: Record<string, string>): Fi
     ) {
       continue;
     }
-    const content = files[p.file];
-    if (content === undefined || !content.includes(p.find)) continue; // verbatim-match gate
-    out.push({ file: p.file, find: p.find, replace: p.replace, explanation: p.explanation });
+    // Models may shorten the paths we showed them ("demo/src/x.ts" -> "src/x.ts").
+    // Reconcile against the closed world of files we sent — never accept unknown files.
+    let file = p.file;
+    if (files[file] === undefined) {
+      const match = Object.keys(files).find((k) => k.endsWith(`/${file}`));
+      if (match === undefined) continue; // unknown file — drop
+      file = match;
+    }
+    const content = files[file];
+    if (!content.includes(p.find)) continue; // verbatim-match gate
+    out.push({ file, find: p.find, replace: p.replace, explanation: p.explanation });
   }
   return out;
 }
