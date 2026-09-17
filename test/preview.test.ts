@@ -109,3 +109,17 @@ describe('affected-code cards', () => {
     expect(html.match(/class="file-card"/g)).toHaveLength(2);
   });
 });
+
+describe('page self-healing', () => {
+  it('always paints the background at the canvas level and fills the viewport', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toMatch(/html \{[^}]*background/);
+    expect(html).toContain('min-height: 100vh');
+  });
+
+  it('embeds a version and reloads on version mismatch', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toContain('window.__API_SENTINEL_VERSION');
+    expect(html).toContain('location.reload');
+  });
+});

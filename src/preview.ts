@@ -233,6 +233,9 @@ function pendingAffectedCount(report: string): number {
   return n;
 }
 
+/** Bump when the page's structure/CSS changes so open tabs self-heal. */
+export const UI_VERSION = '2026-09-17.3';
+
 /** Full dark-theme page with a 5s live-refresh script. Pure. */
 export function renderReportHtml(report: string): string {
   return [
@@ -240,6 +243,7 @@ export function renderReportHtml(report: string): string {
     '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
     '<title>api-sentinel — live report</title>',
     '<style>',
+    'html { background: #0A0E16; min-height: 100%; }',
     ':root {',
     '  color-scheme: dark;',
     '  --bg: #0A0E16; --panel: #0F1522; --panel-edge: #1C2636;',
@@ -248,7 +252,7 @@ export function renderReportHtml(report: string): string {
     '  --amber: #FFB224; --green: #3DD68C;',
     '}',
     '* { box-sizing: border-box; }',
-    'body { background:',
+    'body { min-height: 100vh; background:',
     '  radial-gradient(1200px 500px at 70% -10%, rgba(107, 169, 242, 0.05), transparent 60%),',
     '  radial-gradient(900px 420px at 15% 0%, rgba(229, 72, 77, 0.04), transparent 55%),',
     '  var(--bg);',
@@ -349,9 +353,11 @@ export function renderReportHtml(report: string): string {
     '  <span>refreshes every 5s</span>',
     '</footer>',
     '<script>',
+    'window.__API_SENTINEL_VERSION = "' + UI_VERSION + '";',
     'setInterval(async () => {',
     '  try {',
     '    const j = await (await fetch("/api/report")).json();',
+    '    if (j.version !== window.__API_SENTINEL_VERSION) { location.reload(); return; }',
     '    document.getElementById("report").innerHTML = j.body;',
     '    const ts = document.querySelector("#checked")?.getAttribute("data-ts");',
     '    if (ts) document.title = "api-sentinel — " + new Date(ts).toLocaleTimeString();',
@@ -378,7 +384,7 @@ export async function startPreviewServer(opts: {
     if (url.startsWith('/api/report')) {
       const report = opts.report();
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ report, body: renderReportBody(report) }));
+      res.end(JSON.stringify({ report, body: renderReportBody(report), version: UI_VERSION }));
       return;
     }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
