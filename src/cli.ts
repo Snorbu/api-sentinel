@@ -2,6 +2,7 @@ import { runCheck } from './commands.js';
 import { loadConfig } from './config.js';
 import { fetchSpec } from './fetchSpec.js';
 import { saveSnapshot } from './snapshot.js';
+import { resolve } from 'node:path';
 
 export interface CliArgs {
   _: string[];
@@ -86,6 +87,29 @@ async function runMain(argv: string[]): Promise<number> {
     if (args.out === undefined) console.log(res.report);
     process.stderr.write(`api-sentinel: exit ${res.exitCode}\n`);
     return res.exitCode;
+  }
+
+  if (cmd === 'preview') {
+    const { startPreviewServer } = await import('./preview.js');
+    const repoDir = String(args.repo ?? 'demo');
+    const oldPath = String(args.old ?? resolve('test/fixtures/spec-v1.json'));
+    const newPath = String(args.new ?? resolve('test/fixtures/spec-v2.json'));
+    const apiName = args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api);
+    const configPath = args.config === undefined ? undefined : String(args.config);
+    const report = (): string => {
+      try {
+        return runCheck({ rootDir, repoDir, configPath, oldPath, newPath, apiName }).report;
+      } catch (err) {
+        return `# API Sentinel report\n\nerror: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    };
+    const server = await startPreviewServer({
+      report,
+      port: Number(args.port ?? 4173),
+      open: args['no-open'] === undefined,
+    });
+    console.log(`preview: ${server.url}  (Ctrl+C to stop)`);
+    await new Promise<void>(() => {}); // keep alive; Ctrl+C exits
   }
 
   console.error(`unknown command: ${cmd}. usage:
