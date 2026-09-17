@@ -44,6 +44,15 @@ function valuelessFlags(argv: string[]): Set<string> {
 }
 
 export async function main(argv: string[]): Promise<number> {
+  try {
+    return await runMain(argv);
+  } catch (err) {
+    console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+    return 2;
+  }
+}
+
+async function runMain(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   const cmd = args._[0] ?? '';
   const rootDir = typeof args.root === 'string' ? args.root : process.cwd();

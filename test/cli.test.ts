@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { parseArgs } from '../src/cli.js';
+import { describe, expect, it, vi } from 'vitest';
+import { main, parseArgs } from '../src/cli.js';
 
 describe('parseArgs', () => {
   it('splits positional commands from --flags', () => {
@@ -16,5 +16,15 @@ describe('parseArgs', () => {
 
   it('keeps empty input safe', () => {
     expect(parseArgs([])).toEqual({ _: [] });
+  });
+});
+
+describe('main error handling', () => {
+  it('returns 2 + prints error on unreadable config', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const code = await main(['check', '--config', '/nonexistent/apis.yaml']);
+    expect(code).toBe(2);
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('error:'));
+    err.mockRestore();
   });
 });
