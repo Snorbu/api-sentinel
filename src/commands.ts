@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { diffSpecs, type SpecChange } from './diff.js';
 import { exitCodeFor, type FailOn } from './exitCode.js';
+import { filterChanges, filterHits, filterTokens, loadIgnore } from './ignore.js';
 import { buildReport } from './report.js';
 import { extractTokens, scanRepo } from './scan.js';
 import { loadPreviousSnapshot, loadSnapshot } from './snapshot.js';
@@ -61,10 +62,11 @@ export function runCheck(deps: CheckDeps): CheckResult {
 
   const sections: string[] = [];
   let anyFailing = false;
+  const rules = loadIgnore(deps.repoDir);
   for (const e of entries) {
-    const changes: SpecChange[] = diffSpecs(e.oldSpec, e.newSpec);
-    const tokens = extractTokens(changes);
-    const usages = tokens.length > 0 ? scanRepo(deps.repoDir, tokens) : [];
+    const changes: SpecChange[] = filterChanges(diffSpecs(e.oldSpec, e.newSpec), rules);
+    const tokens = filterTokens(extractTokens(changes), rules);
+    const usages = tokens.length > 0 ? filterHits(scanRepo(deps.repoDir, tokens), rules) : [];
     sections.push(
       buildReport({ apiName: e.apiName, specUrl: e.specUrl, fetchedAt: e.fetchedAt, changes, usages }),
     );

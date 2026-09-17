@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { classify } from './classify.js';
 import { diffSpecs, type SpecChange } from './diff.js';
 import { buildFixPrompt, parseFixResponse, type FixPatch } from './fix.js';
 import { applyFixes } from './applyFix.js';
+import { filterChanges, filterHits, filterTokens, loadIgnore } from './ignore.js';
 import { extractTokens, scanRepo, type UsageHit } from './scan.js';
 
 export interface FixDeps {
@@ -32,15 +32,15 @@ export async function runFix(deps: FixDeps): Promise<FixResult> {
   void deps.rootDir; // snapshots unused in fixture mode; kept for future config-mode support
   const oldSpec = JSON.parse(readFileSync(deps.oldPath, 'utf8')) as unknown;
   const newSpec = JSON.parse(readFileSync(deps.newPath, 'utf8')) as unknown;
-  const changes = diffSpecs(oldSpec, newSpec).filter((c) => classify(c) === 'breaking');
 
   const perChange: FixResult['perChange'] = [];
   const errors: string[] = [];
   const allPatches: FixPatch[] = [];
 
-  for (const change of changes) {
-    const tokens = extractTokens([change]);
-    const usages = tokens.length > 0 ? scanRepo(deps.repoDir, tokens) : [];
+  const rules = loadIgnore(deps.repoDir);
+  for (const change of filterChanges(diffSpecs(oldSpec, newSpec), rules)) {
+    const tokens = filterTokens(extractTokens([change]), rules);
+    const usages = tokens.length > 0 ? filterHits(scanRepo(deps.repoDir, tokens), rules) : [];
     if (usages.length === 0) continue; // nothing in the repo uses this surface
 
     const files: Record<string, string> = {};
