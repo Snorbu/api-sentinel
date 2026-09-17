@@ -1,0 +1,39 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { runCheck } from '../src/commands.js';
+import { saveSnapshot } from '../src/snapshot.js';
+
+describe('runCheck', () => {
+  it('fixture mode: --old/--new diffs two spec files, exit 1 on breaking', () => {
+    const root = mkdtempSync(join(tmpdir(), 'chk-'));
+    const oldP = join(root, 'old.json');
+    const newP = join(root, 'new.json');
+    writeFileSync(oldP, JSON.stringify({ paths: { '/v1/x': { get: { responses: {} } } } }));
+    writeFileSync(newP, JSON.stringify({ paths: {} })); // endpoint removed -> breaking
+
+    const res = runCheck({ rootDir: root, oldPath: oldP, newPath: newP, apiName: 'demo', repoDir: root });
+    expect(res.exitCode).toBe(1);
+    expect(res.report).toContain('Breaking changes');
+  });
+
+  it('snapshot mode: no previous snapshot -> exit 0, skip message', () => {
+    const root = mkdtempSync(join(tmpdir(), 'chk2-'));
+    const cfg = join(root, 'apis.yaml');
+    writeFileSync(cfg, 'apis:\n  - name: a\n    specUrl: https://x/s.json\n');
+    const res = runCheck({ rootDir: root, configPath: cfg, repoDir: root });
+    expect(res.exitCode).toBe(0);
+    expect(res.report).toContain('no previous snapshot');
+  });
+
+  it('snapshot mode: breaking diff between previous and current', () => {
+    const root = mkdtempSync(join(tmpdir(), 'chk3-'));
+    const cfg = join(root, 'apis.yaml');
+    writeFileSync(cfg, 'apis:\n  - name: a\n    specUrl: https://x/s.json\n');
+    saveSnapshot(root, 'a', { paths: { '/v1/x': {} } }, 't1');
+    saveSnapshot(root, 'a', { paths: {} }, 't2');
+    const res = runCheck({ rootDir: root, configPath: cfg, repoDir: root });
+    expect(res.exitCode).toBe(1);
+  });
+});
