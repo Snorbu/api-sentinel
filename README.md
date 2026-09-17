@@ -125,9 +125,15 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 - [ ] **v0.3** — per-vendor agents that also watch changelogs/docs, not just specs
 - [ ] **v0.4** — semantically-aware OpenAPI differ (`oneOf` reshuffles, parameter arrays)
 
+## Who it's for
+
+**Honest wedge:** teams and agents calling vendor APIs over **raw HTTP** (fetch/requests/scripts), where no compiler protects you. If you use typed vendor SDKs, you already have partial protection — api-sentinel detects that (`detectSdks`) and tells you what's still uncovered: SDK updates lag the spec, and code bypassing the SDK is exposed.
+
+**Known limitations, stated up front:** spec diffing is leaf-based (semantic `oneOf`/`$ref` diffing is on the roadmap); scanner tokens can false-positive in big repos (suppress via `.sentinelignore`); LLM patches are suggestions with verbatim-match validation, not guarantees — review them.
+
 ## Dev
 
 ```bash
-npm test        # vitest, 32 tests, no network
+npm test        # vitest, 82 tests, no network
 npm run build   # tsc -> dist/
 ```
