@@ -34,7 +34,7 @@ export function buildReport(input: ReportInput): string {
     lines.push('## Possibly affected code in this repo');
     lines.push('');
     for (const u of input.usages) {
-      lines.push(`- ${u.file}:${u.line} — token \`${u.token}\` — \`${u.snippet}\``);
+      lines.push(`- \`${u.file}:${u.line}\` — token \`${u.token}\` — \`${u.snippet}\``);
     }
     lines.push('');
   }
