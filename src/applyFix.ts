@@ -13,6 +13,17 @@ export interface ApplyResult {
  * contain `find` verbatim. Dry-run reports would-apply without writing.
  */
 export function applyFixes(rootDir: string, patches: FixPatch[], dryRun: boolean): ApplyResult {
+  return applyFixesDetailed(rootDir, patches, dryRun);
+}
+
+/**
+ * Apply patches to files under rootDir. Every patch is re-verified at apply
+ * time (TOCTOU-safe): the target must exist, stay inside rootDir, and still
+ * contain `find` verbatim. A `find` matching MULTIPLE lines is ambiguous —
+ * skipped unless the patch carries `all: true` (replace every occurrence).
+ * Dry-run reports would-apply without writing.
+ */
+export function applyFixesDetailed(rootDir: string, patches: (FixPatch & { all?: boolean })[], dryRun: boolean): ApplyResult {
   const applied: string[] = [];
   const skipped: string[] = [];
   const rootResolved = resolve(rootDir);
@@ -31,8 +42,8 @@ export function applyFixes(rootDir: string, patches: FixPatch[], dryRun: boolean
       skipped.push(p.file); // missing file — never create it
       continue;
     }
-    const idx = content.indexOf(p.find);
-    if (idx === -1) {
+    const first = content.indexOf(p.find);
+    if (first === -1) {
       skipped.push(p.file); // find vanished or never existed — TOCTOU gate
       continue;
     }
@@ -40,7 +51,18 @@ export function applyFixes(rootDir: string, patches: FixPatch[], dryRun: boolean
       applied.push(p.file);
       continue;
     }
-    const next = content.slice(0, idx) + p.replace + content.slice(idx + p.find.length);
+    let next: string;
+    if (p.all === true) {
+      occurrences = content.split(p.find).length - 1;
+      next = content.split(p.find).join(p.replace);
+    } else {
+      const second = content.indexOf(p.find, first + 1);
+      if (second !== -1) {
+        skipped.push(`${p.file} (${content.split(p.find).length - 1} occurrences — ambiguous)`);
+        continue;
+      }
+      next = content.slice(0, first) + p.replace + content.slice(first + p.find.length);
+    }
     writeFileSync(abs, next);
     applied.push(p.file);
   }
