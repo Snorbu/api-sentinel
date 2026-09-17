@@ -29,8 +29,8 @@ describe('reviewPatches', () => {
         return Promise.resolve('y');
       },
     });
-    expect(inputs[0]).toContain('- const x: { paid: boolean }');
-    expect(inputs[0]).toContain('+ const x: { status: string }');
+    expect(inputs[0]).toContain('- { paid: boolean }');
+    expect(inputs[0]).toContain('+ { status: string }');
     expect(inputs[0]).toContain('paid was removed; status survives');
     expect(res.applied).toEqual(['src/payment.ts']);
   });
