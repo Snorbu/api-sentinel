@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .openclaude/
+snapshots/
+report.md
 
 # ShipStudio metadata
 .shipstudio/

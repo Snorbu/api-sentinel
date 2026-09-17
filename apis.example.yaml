@@ -1,0 +1,3 @@
+apis:
+  - name: openai
+    specUrl: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml

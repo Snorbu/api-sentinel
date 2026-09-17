@@ -1,0 +1,30 @@
+name: api-sentinel
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # v0.1 installs from the api-sentinel git repo; later: `npx api-sentinel`
+      - run: npm install github:sahilsri/api-sentinel && npx api-sentinel snapshot --config apis.yaml
+      - run: npx api-sentinel check --config apis.yaml --repo . --out report.md
+      - if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "api-sentinel[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -B api-sentinel/report
+          git add report.md snapshots
+          git commit -m "api-sentinel: breaking API changes detected"
+          git push --force origin api-sentinel/report
+          gh pr create --fill --base main --head api-sentinel/report || true
