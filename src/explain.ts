@@ -1,0 +1,67 @@
+import type { SpecChange } from './diff.js';
+
+function fieldName(path: string): string {
+  const m = path.match(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/);
+  if (m) return m[1]!;
+  const req = path.match(/\.required\.([A-Za-z0-9_]+)$/);
+  if (req) return req[1]!;
+  return path.split('.').slice(-2, -1)[0] ?? path;
+}
+
+function endpoint(path: string): string {
+  const m = path.match(/^paths\.(\S+?)\.(get|post|put|patch|delete|head|options)\./);
+  return m ? m[1]! : path;
+}
+
+function parseJson(s: string | undefined): unknown {
+  try {
+    return JSON.parse(s ?? '') as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One plain-English sentence for a breaking change: what happened, and what
+ * breaks in the consumer. Heuristic leaf paths, human phrasing.
+ */
+export function explainChange(c: SpecChange): string {
+  const field = fieldName(c.path);
+  const ep = endpoint(c.path);
+
+  if (c.kind === 'removed') {
+    if (/\.required\.[^.]+$/.test(c.path)) {
+      return `field \`${field}\` stopped being required — calls keep working; you may drop it.`;
+    }
+    if (/\.description$/.test(c.path)) return `docs for \`${field}\` were removed — no impact.`;
+    if (/\.properties\./.test(c.path)) {
+      return `response field \`${field}\` was removed on \`${ep}\` — code reading it now gets \`undefined\`.`;
+    }
+    return `endpoint \`${ep}\` was removed — calls to it will fail.`;
+  }
+
+  if (c.kind === 'added') {
+    if (/\.required\.[^.]+$/.test(c.path)) {
+      return `\`${field}\` is now required on \`${ep}\` — requests missing it will be rejected.`;
+    }
+    return `new optional field \`${field}\` on \`${ep}\` — safe to ignore.`;
+  }
+
+  // changed
+  if (c.path.endsWith('.enum')) {
+    const before = parseJson(c.before);
+    const after = parseJson(c.after);
+    if (Array.isArray(before) && Array.isArray(after)) {
+      const dropped = before.filter((v) => !after.includes(v));
+      if (dropped.length > 0) {
+        const list = dropped.map((v) => `\`${String(v)}\``).join(', ');
+        return `enum on \`${field}\` no longer includes ${list} — code handling those cases breaks.`;
+      }
+    }
+    return `enum values on \`${field}\` changed.`;
+  }
+  if (c.path.endsWith('.type')) {
+    return `field \`${field}\` changed type from ${c.before ?? '?'} to ${c.after ?? '?'} — parsers expecting the old type break.`;
+  }
+  return `spec detail on \`${field}\` changed.`;
+}
