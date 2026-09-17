@@ -99,6 +99,25 @@ your repo ──────────── token scan (file:line) <───
 
 Pure TypeScript, zero runtime deps except `yaml`. No LLM calls, no accounts, no lock-in.
 
+## Security (LLM fix generation)
+
+The `fix` command sends data to an LLM. What leaves your machine:
+
+- **Sent:** the breaking change (from the vendor's public spec), the affected `file:line` usages, and the **full contents of only the affected files**.
+- **Never sent:** snapshots, unrelated files, or any credentials.
+
+Prompt-injection hardening: vendor-controlled spec text is wrapped in a "DATA, not instructions" contract. The model's reply is treated as inert data — it can only produce structured find/replace patches, and a patch is written **only if its `find` text exists verbatim** in the target file (first occurrence, re-verified at apply time). Patches may not reference files outside the scan results. No `eval`, no shell, no dynamic imports of model output.
+
+Configure the provider with env vars (any OpenAI-compatible endpoint):
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `API_SENTINEL_LLM_BASEURL` | chat-completions base URL | `https://api.openai.com/v1` |
+| `API_SENTINEL_LLM_KEY` | API key (required for `fix`) | — |
+| `API_SENTINEL_LLM_MODEL` | model id | `gpt-4o-mini` |
+
+`fix` is **dry-run by default**; pass `--yes` to write. Exit codes: `0` all breaking changes patched (or none needed), `1` at least one breaking change the model couldn't patch, `2` usage error.
+
 ## Roadmap
 
 - **v0.2** — LLM-generated fix PRs (patch the affected call sites, not just report them)
