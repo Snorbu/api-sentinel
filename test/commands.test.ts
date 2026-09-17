@@ -92,3 +92,26 @@ describe('SDK awareness in report', () => {
     expect(res.report).not.toContain('Vendor SDK(s)');
   });
 });
+
+describe('--format json', () => {
+  it('returns a machine-readable payload with structured changes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'json-'));
+    const res = runCheck({
+      rootDir: root,
+      oldPath: resolve('test/fixtures/spec-v1.json'),
+      newPath: resolve('test/fixtures/spec-v2.json'),
+      apiName: 'demo',
+      repoDir: root,
+      format: 'json',
+    });
+    const payload = JSON.parse(res.report) as {
+      apis: { apiName: string; breaking: number; changes: { kind: string; path: string }[]; usages: unknown[] }[];
+      exitCode: number;
+    };
+    expect(payload.apis).toHaveLength(1);
+    expect(payload.apis[0]!.apiName).toBe('demo');
+    expect(payload.apis[0]!.breaking).toBe(3);
+    expect(payload.apis[0]!.changes.length).toBeGreaterThan(0);
+    expect(payload.exitCode).toBe(1);
+  });
+});

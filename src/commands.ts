@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { classify } from './classify.js';
 import { loadConfig } from './config.js';
 import { diffSpecs, type SpecChange } from './diff.js';
 import { exitCodeFor, type FailOn } from './exitCode.js';
@@ -17,6 +18,7 @@ export interface CheckDeps {
   newPath?: string;
   apiName?: string;
   failOn?: FailOn;
+  format?: 'text' | 'json';
 }
 
 export interface CheckResult {
@@ -62,6 +64,15 @@ export function runCheck(deps: CheckDeps): CheckResult {
   }
 
   const sections: string[] = [];
+  const jsonApis: {
+    apiName: string;
+    specUrl: string;
+    breaking: number;
+    additive: number;
+    cosmetic: number;
+    changes: SpecChange[];
+    usages: { file: string; line: number; token: string; snippet: string }[];
+  }[] = [];
   let anyFailing = false;
   const rules = loadIgnore(deps.repoDir);
   for (const e of entries) {
@@ -71,6 +82,15 @@ export function runCheck(deps: CheckDeps): CheckResult {
     sections.push(
       buildReport({ apiName: e.apiName, specUrl: e.specUrl, fetchedAt: e.fetchedAt, changes, usages }),
     );
+    jsonApis.push({
+      apiName: e.apiName,
+      specUrl: e.specUrl,
+      breaking: changes.filter((c) => classify(c) === 'breaking').length,
+      additive: changes.filter((c) => classify(c) === 'additive').length,
+      cosmetic: changes.filter((c) => classify(c) === 'cosmetic').length,
+      changes,
+      usages,
+    });
     if (exitCodeFor(changes, deps.failOn ?? 'breaking') === 1) anyFailing = true;
   }
 
@@ -80,7 +100,13 @@ export function runCheck(deps: CheckDeps): CheckResult {
     if (vendors.length > 0) parts.push(`> ${sdkAdvice(vendors)}`);
   }
   if (entries.length === 0 && skips.length === 0) parts.push('> nothing to check: no specs provided');
-  const report = parts.join('\n\n');
+
+  let report: string;
+  if (deps.format === 'json') {
+    report = JSON.stringify({ apis: jsonApis, exitCode: anyFailing ? 1 : 0 }, null, 2);
+  } else {
+    report = parts.join('\n\n');
+  }
   if (deps.outPath) writeFileSync(deps.outPath, report);
   return { exitCode: anyFailing ? 1 : 0, report };
 }

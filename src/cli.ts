@@ -97,8 +97,14 @@ async function runMain(argv: string[]): Promise<number> {
       newPath: args.new === undefined ? undefined : String(args.new),
       apiName: args.api === undefined || String(args.api) === '' ? undefined : String(args.api),
       failOn: failOnRaw as 'breaking' | 'additive' | 'none' | undefined,
+      format: args.format === 'json' ? 'json' : undefined,
     });
     if (args.out === undefined) console.log(res.report);
+    if (res.exitCode === 1 && args['notify-webhook'] !== undefined) {
+      const { notifyWebhook } = await import('./notify.js');
+      const sent = await notifyWebhook(String(args['notify-webhook']), res.report);
+      if (sent) console.error('webhook notification sent');
+    }
     process.stderr.write(`api-sentinel: exit ${res.exitCode}\n`);
     return res.exitCode;
   }
