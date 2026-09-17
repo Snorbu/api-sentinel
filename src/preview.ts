@@ -97,14 +97,14 @@ function verdictHtml(report: string): string {
     ? escapeHtml(new Date(ts).toLocaleTimeString())
     : new Date().toLocaleTimeString();
 
+  const timeRow = `<span class="who-time" id="checked" data-ts="${checkedAttr}">${time}</span>`;
   if (isErrorReport(report)) {
     return [
       `<header class="verdict">`,
-      `  <div class="who"><h1>${name}</h1><span class="pulse err" aria-hidden="true"></span><span class="pulse-label err">ERROR</span></div>`,
+      `  <div class="who"><h1>${name}</h1><span class="status"><span class="pulse err" aria-hidden="true"></span><span class="pulse-label err">ERROR</span></span>${timeRow}</div>`,
       `</header>`,
       `<section class="error-card"><p><strong>The check failed.</strong> Nothing was broken by a vendor — the sentinel itself couldn't complete its run.</p>`,
       `<p class="mono">${escapeHtml(report.match(/^\s*error:\s*(.+)$/m)?.[1]?.trim() ?? 'unknown error')}</p></section>`,
-      `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
     ].join('\n');
   }
 
@@ -112,9 +112,8 @@ function verdictHtml(report: string): string {
   if (!counts) {
     return [
       `<header class="verdict">`,
-      `  <div class="who"><h1>${name}</h1><span class="pulse" aria-hidden="true"></span><span class="pulse-label">LIVE</span></div>`,
+      `  <div class="who"><h1>${name}</h1><span class="status"><span class="pulse" aria-hidden="true"></span><span class="pulse-label">LIVE</span></span>${timeRow}</div>`,
       `</header>`,
-      `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
     ].join('\n');
   }
 
@@ -129,7 +128,8 @@ function verdictHtml(report: string): string {
     `<header class="verdict ${state}">`,
     `  <div class="who">`,
     `    <h1>${name}</h1>`,
-    `    <span class="pulse" aria-hidden="true"></span><span class="pulse-label">LIVE</span>`,
+    `    <span class="status"><span class="pulse" aria-hidden="true"></span><span class="pulse-label">LIVE</span></span>`,
+    `    ${timeRow}`,
     `  </div>`,
     `  <p class="state ${state === 'ok' ? 'all-clear' : 'all-broken'}">${
       state === 'ok' ? 'All clear — no breaking changes.' : 'Breaking changes detected in your dependencies.'
@@ -138,7 +138,6 @@ function verdictHtml(report: string): string {
     `      ${chips}`,
     `  </div>`,
     `</header>`,
-    `<div class="meta"><span id="checked" data-ts="${checkedAttr}">${time}</span></div>`,
   ].join('\n');
 }
 
@@ -268,7 +267,14 @@ export function renderReportHtml(report: string): string {
     '',
     '/* verdict */',
     '.verdict { padding: 8px 0 20px; }',
-    '.verdict .who { display: flex; align-items: baseline; gap: 14px; }',
+    '.verdict .who { display: flex; align-items: center; gap: 18px; }',
+    '.verdict .who h1 { margin-right: 4px; }',
+    '.status { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px;',
+    '  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); border-radius: 20px;',
+    '  background: color-mix(in srgb, var(--green) 8%, transparent); }',
+    '.status .pulse-label { font-size: 10px; letter-spacing: 0.08em; }',
+    '.who-time { margin-left: auto; color: var(--ink-faint); font-size: 12px;',
+    '  font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
     '.state { margin: 6px 0 18px; font-size: 16px; color: var(--ink-dim); }',
     '.state.all-clear { color: var(--green); }',
     '.state.all-broken { color: var(--red); font-weight: 500; }',
@@ -284,7 +290,7 @@ export function renderReportHtml(report: string): string {
     '.chip.zero { opacity: 0.45; }',
     '',
     '/* pulse */',
-    '.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); align-self: center;',
+    '.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green);',
     '  animation: pulse 2s ease-in-out infinite; }',
     '.pulse-label { font-size: 10px; letter-spacing: 0.1em; color: var(--green); font-weight: 600; }',
     '.pulse.err { background: var(--red-deep); animation: none; }',

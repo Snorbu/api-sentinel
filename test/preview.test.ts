@@ -123,3 +123,16 @@ describe('page self-healing', () => {
     expect(html).toContain('location.reload');
   });
 });
+
+describe('verdict header ergonomics', () => {
+  it('groups pulse+label into one status pill and anchors the check time right', () => {
+    const html = renderReportHtml(REPORT);
+    // status pill: dot and LIVE inside one container
+    expect(html).toMatch(/class="status"[^>]*>\s*<span class="pulse"/);
+    expect(html).toMatch(/class="status"[^>]*>[\s\S]*?LIVE<\/span>\s*<\/span>/);
+    // check time lives in the header row (anchors the right side)
+    expect(html).toContain('who-time');
+    // old flat meta strip is gone from the verdict
+    expect(html).not.toMatch(/<div class="meta"><span id="checked"/);
+  });
+});
