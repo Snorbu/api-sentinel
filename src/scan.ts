@@ -28,20 +28,47 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function loadIgnoreRules(path: string): { files: string[] } {
+  try {
+    const rules = { files: [] as string[] };
+    for (const raw of readFileSync(path, 'utf8').split('\n')) {
+      const line = raw.trim();
+      if (line === '' || line.startsWith('#')) continue;
+      const sp = line.indexOf(' ');
+      if (sp > 0 && line.slice(0, sp) === 'file') rules.files.push(line.slice(sp + 1).trim());
+    }
+    return rules;
+  } catch {
+    return { files: [] };
+  }
+}
+
+function globToRegExp(glob: string): RegExp {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  if (glob.includes('**')) return new RegExp(`(^|/)${esc.replace(/\*\*/g, '.*')}`);
+  return new RegExp(`(?:^|/)${esc.replace(/\*/g, '[^/]*')}$`);
+}
+
 export function scanRepo(rootDir: string, tokens: string[]): UsageHit[] {
   const hits: UsageHit[] = [];
   const matchers = tokens.map((t) => ({
     token: t,
     re: new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(t)}([^A-Za-z0-9_]|$)`),
   }));
-  const visit = (d: string): void => {
+  const visit = (d: string, ignoredFiles: RegExp[]): void => {
+    // a .sentinelignore in this directory applies to its whole subtree
+    const nestedIgnore = join(d, '.sentinelignore');
+    const rules = loadIgnoreRules(nestedIgnore);
+    const effective = rules.files.length > 0 ? [...ignoredFiles, ...rules.files.map(globToRegExp)] : ignoredFiles;
     for (const entry of readdirSync(d)) {
       if (SKIP.has(entry)) continue;
       const full = join(d, entry);
       if (statSync(full).isDirectory()) {
-        visit(full);
+        visit(full, effective);
         continue;
       }
+      const rel = full.slice(rootDir.length + 1);
+      if (effective.some((re) => re.test(rel) || re.test(entry))) continue;
       const ext = `.${entry.split('.').pop()}`;
       if (!EXTS.has(ext)) continue;
       const lines = readFileSync(full, 'utf8').split('\n');
@@ -53,7 +80,7 @@ export function scanRepo(rootDir: string, tokens: string[]): UsageHit[] {
       });
     }
   };
-  visit(rootDir);
+  visit(rootDir, []);
   return hits;
 }
 

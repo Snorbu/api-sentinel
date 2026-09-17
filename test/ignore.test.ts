@@ -68,3 +68,28 @@ describe('filterHits', () => {
     expect(kept.map((h) => h.file)).toEqual(['src/payment.ts', 'src/payment.test.ts']);
   });
 });
+
+describe('workspaces', () => {
+  it('skips workspace member node_modules subtrees and respects nested sentinelignore', async () => {
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { scanRepo } = await import('../src/scan.js');
+    const root = mkdtempSync(join(tmpdir(), 'ws-'));
+    // monorepo: packages/api has its own node_modules that must be skipped
+    mkdirSync(join(root, 'packages', 'api', 'node_modules', 'vend'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'api', 'src'), { recursive: true });
+    writeFileSync(join(root, 'packages', 'api', 'src', 'client.ts'), 'const url = "/v1/charges";\n');
+    writeFileSync(join(root, 'packages', 'api', 'node_modules', 'vend', 'x.ts'), 'const url = "/v1/charges";\n');
+    // nested ignore: packages/web ignores everything
+    mkdirSync(join(root, 'packages', 'web'), { recursive: true });
+    writeFileSync(join(root, 'packages', 'web', 'src.ts'), 'const url = "/v1/charges";\n');
+    writeFileSync(join(root, 'packages', 'web', '.sentinelignore'), 'file **\n');
+
+    const hits = scanRepo(root, ['/v1/charges']);
+    const files = hits.map((h) => h.file);
+    expect(files.some((f) => f.includes('client.ts'))).toBe(true);
+    expect(files.some((f) => f.includes('node_modules'))).toBe(false);
+    expect(files.some((f) => f.includes('web'))).toBe(false);
+  });
+});
