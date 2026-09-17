@@ -64,3 +64,16 @@ describe('verdict header', () => {
     expect(html).toContain('error-card');
   });
 });
+
+describe('kind badges', () => {
+  it('badges the leading kind token and strips it from the text', () => {
+    const html = renderReportHtml(
+      '## Breaking changes\n\n- `removed` `paths./x.type`\n- `changed` `paths./y.enum`\n',
+    );
+    expect(html).toContain('<span class="kind kind-removed">removed</span>');
+    expect(html).toContain('<span class="kind kind-changed">changed</span>');
+    // original backticked token is not duplicated after the badge
+    expect(html).not.toContain('>removed</span> <code>removed</code>');
+    expect(html).toContain('class="breaking-panel"');
+  });
+});

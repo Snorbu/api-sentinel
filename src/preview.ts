@@ -94,6 +94,7 @@ function verdictHtml(report: string): string {
 export function renderReportBody(report: string): string {
   const body: string[] = [];
   let inList = false;
+  let inPanel = false;
   let suppressHeading = false;
   const closeList = (): void => {
     if (inList) {
@@ -110,13 +111,27 @@ export function renderReportBody(report: string): string {
     }
     if (line.startsWith('## ')) {
       closeList();
-      body.push(`<h2>${inline(line.slice(3))}</h2>`);
+      if (inPanel) {
+        body.push('</section>');
+        inPanel = false;
+      }
+      const heading = line.slice(3);
+      if (heading === 'Breaking changes') {
+        inPanel = true;
+        body.push(`<section class="breaking-panel"><h2>${inline(heading)}</h2>`);
+      } else {
+        body.push(`<h2>${inline(heading)}</h2>`);
+      }
     } else if (line.startsWith('- ')) {
       if (!inList) {
         body.push('<ul>');
         inList = true;
       }
-      body.push(`<li>${inline(line.slice(2))}</li>`);
+      const item = line.slice(2);
+      const kindMatch = item.match(/^(`?)(removed|changed|added)\1\s/);
+      const badge = kindMatch ? `<span class="kind kind-${kindMatch[2]}">${kindMatch[2]}</span> ` : '';
+      const rest = kindMatch ? item.slice(kindMatch[0].length) : item;
+      body.push(`<li>${badge}${inline(rest)}</li>`);
     } else if (line === '') {
       closeList();
     } else {
@@ -125,6 +140,7 @@ export function renderReportBody(report: string): string {
     }
   }
   closeList();
+  if (inPanel) body.push('</section>');
   return verdictHtml(report) + '\n' + body.join('\n');
 }
 
@@ -164,8 +180,8 @@ export function renderReportHtml(report: string): string {
     '.chip span { color: var(--ink-dim); }',
     '.chip strong { font-size: 15px; }',
     '.chip-breaking strong { color: var(--red); } .chip-breaking { border-color: color-mix(in srgb, var(--red) 35%, transparent); }',
-    '.chip-additive strong { color: var(--amber); }',
-    '.chip-cosmetic strong { color: var(--ink-dim); }',
+    '.chip-additive strong { color: var(--amber); } .chip-additive { border-color: color-mix(in srgb, var(--amber) 30%, transparent); }',
+    '.chip-cosmetic strong { color: var(--ink-faint); } .chip-cosmetic { border-style: dashed; }',
     '.chip.zero { opacity: 0.45; }',
     '',
     '/* pulse */',
@@ -179,12 +195,22 @@ export function renderReportHtml(report: string): string {
     '',
     '/* sections */',
     '.breaking-panel { background: var(--panel); border: 1px solid color-mix(in srgb, var(--red) 30%, var(--panel-edge));',
-    '  border-left: 3px solid var(--red-deep); border-radius: 10px; padding: 4px 20px; }',
+    '  border-left: 3px solid var(--red-deep); border-radius: 10px; padding: 4px 20px 8px; margin: 36px 0 12px; }',
     '.breaking-panel h2 { margin-top: 16px; color: var(--red); }',
+    '.breaking-panel li { border-bottom: 1px solid color-mix(in srgb, var(--red) 12%, var(--panel-edge)); }',
+    '.breaking-panel li:last-child { border-bottom: none; }',
     'ul { list-style: none; margin: 0; padding: 0; }',
     'li { padding: 9px 0; border-bottom: 1px solid var(--panel-edge); margin: 0; font-size: 13px;',
     '  font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-dim); }',
     'li:last-child { border-bottom: none; }',
+    '.kind { display: inline-block; min-width: 62px; text-align: center; border-radius: 5px;',
+    '  padding: 1px 7px; margin-right: 8px; font-size: 11px; font-weight: 600; }',
+    '.kind-removed { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent);',
+    '  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent); }',
+    '.kind-changed { color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent);',
+    '  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); }',
+    '.kind-added { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent);',
+    '  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }',
     'p { margin: 8px 0; }',
     'code { font-size: 12px; background: transparent; border: none; padding: 0; color: var(--ink); }',
     '.meta { color: var(--ink-faint); font-size: 12px; margin: 4px 0 8px;',
