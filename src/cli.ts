@@ -126,8 +126,11 @@ async function runMain(argv: string[]): Promise<number> {
     const { chatCompletion } = await import('./llm.js');
     const { FIX_SYSTEM_PROMPT } = await import('./fix.js');
     const { runFix } = await import('./fixCommand.js');
-    // safe default: dry-run unless --yes explicitly authorizes real writes
-    const dryRun = args['dry-run'] !== undefined || args.yes === undefined;
+    const { reviewPatches } = await import('./review.js');
+    const { createInterface } = await import('node:readline/promises');
+
+    const interactive = args['dry-run'] === undefined && args.yes === undefined && process.stdin.isTTY === true;
+    const dryRun = args['dry-run'] !== undefined || (!interactive && args.yes === undefined);
     const oldPath = String(args.old ?? resolve('test/fixtures/spec-v1.json'));
     const newPath = String(args.new ?? resolve('test/fixtures/spec-v2.json'));
     const apiName = args.api === undefined || String(args.api) === '' ? 'demo' : String(args.api);
@@ -141,7 +144,8 @@ async function runMain(argv: string[]): Promise<number> {
         ],
       });
 
-    const res = await runFix({ rootDir, repoDir, oldPath, newPath, apiName, dryRun, llm });
+    // review mode: patches come back unapplied; the dev accepts them one by one
+    const res = await runFix({ rootDir, repoDir, oldPath, newPath, apiName, dryRun: true, llm });
 
     for (const pc of res.perChange) {
       console.log(`\n## ${pc.change.kind} — ${pc.change.path}`);
@@ -149,13 +153,34 @@ async function runMain(argv: string[]): Promise<number> {
       for (const p of pc.patches) console.log(`   fix: ${p.explanation}`);
       if (pc.error) console.log(`   error: ${pc.error}`);
     }
-    console.log(
-      `\n${dryRun ? 'would apply' : 'applied'}: ${res.appliedCount} patch(es)` +
-        (res.skippedCount > 0 ? `, skipped: ${res.skippedCount}` : ''),
-    );
-    if (dryRun && res.appliedCount > 0) {
-      console.log('re-run with --yes to write the changes');
+
+    const allPatches = res.perChange.flatMap((pc) => pc.patches);
+    let appliedCount = 0;
+    let skippedCount = res.skippedCount;
+
+    if (dryRun) {
+      appliedCount = res.appliedCount;
+      console.log(`\ndry-run: ${appliedCount} patch(es) would apply. Re-run with --yes, or run without flags in a terminal to review each one.`);
+    } else if (interactive) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const review = await reviewPatches(repoDir, allPatches, {
+        ask: (q) => rl.question(`\n${q}\n> `),
+      });
+      rl.close();
+      appliedCount = review.applied.length;
+      skippedCount += review.decisions.filter((d) => d.decision === 'skip').length;
+    } else {
+      // --yes: non-interactive, trust the validator, write everything
+      const { applyFixes } = await import('./applyFix.js');
+      const r = applyFixes(repoDir, allPatches, false);
+      appliedCount = r.applied.length;
+      skippedCount += r.skipped.length;
     }
+
+    console.log(
+      `\n${dryRun ? 'would apply' : 'applied'}: ${appliedCount} patch(es)` +
+        (skippedCount > 0 ? `, skipped: ${skippedCount}` : ''),
+    );
     const unresolved = res.perChange.filter((pc) => pc.patches.length === 0).length;
     return unresolved > 0 ? 1 : 0;
   }
