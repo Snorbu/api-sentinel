@@ -52,7 +52,7 @@ describe('scanRepo precision', () => {
     const root = mkdtempSync(join(tmpdir(), 'scanp-'));
     writeFileSync(
       join(root, 'a.ts'),
-      'const unparsed = 1; // the buyer has already paid today\nconst x = body.paid;\n',
+      'const unparsed = 1; // repaid invoices are excluded\nconst x = body.paid;\n',
     );
     const hits = scanRepo(root, ['paid']);
     expect(hits.map((h) => h.line)).toEqual([2]);
