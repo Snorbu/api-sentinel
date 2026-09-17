@@ -36,6 +36,59 @@ function isErrorReport(report: string): boolean {
   return /^\s*error:\s/m.test(report);
 }
 
+/** "<code>file:line</code> — token <code>t</code> — <code>snippet</code>" -> structured usage */
+interface Affected {
+  file: string;
+  line: string;
+  token: string;
+  snippet: string;
+}
+
+function parseAffected(li: string): Affected | null {
+  const m = li.match(
+    /^`(.+):(\d+)`\s+—\s+token\s+`([^`]+)`\s+—\s+`([\s\S]+)`$/,
+  );
+  return m ? { file: m[1]!, line: m[2]!, token: m[3]!, snippet: m[4]! } : null;
+}
+
+function affectedCardHtml(items: string[]): string {
+  const parsed = items.map(parseAffected).filter((a): a is Affected => a !== null);
+  if (parsed.length === 0) return null as unknown as string;
+  const byFile = new Map<string, Affected[]>();
+  for (const a of parsed) {
+    const list = byFile.get(a.file) ?? [];
+    list.push(a);
+    byFile.set(a.file, list);
+  }
+  const cards: string[] = [];
+  for (const [file, hits] of byFile) {
+    const rows = hits
+      .map((h) => {
+        const snippet = escapeHtml(h.snippet);
+        const idx = snippet.indexOf(escapeHtml(h.token));
+        const highlighted =
+          idx >= 0
+            ? `${snippet.slice(0, idx)}<span class="hit">${escapeHtml(h.token)}</span>${snippet.slice(idx + escapeHtml(h.token).length)}`
+            : snippet;
+        return [
+          '<div class="code-row">',
+          `  <span class="ln">${h.line}</span>`,
+          `  <span class="tok">${escapeHtml(h.token)}</span>`,
+          `  <code class="snippet">${highlighted}</code>`,
+          '</div>',
+        ].join('\n');
+      })
+      .join('\n');
+    cards.push([
+      '<section class="file-card">',
+      `  <header><code>${escapeHtml(file)}</code><span class="hits">${hits.length} hit${hits.length === 1 ? '' : 's'}</span></header>`,
+      rows,
+      '</section>',
+    ].join('\n'));
+  }
+  return cards.join('\n');
+}
+
 function verdictHtml(report: string): string {
   const name = escapeHtml(apiName(report));
   const ts = fetchTime(report);
@@ -67,7 +120,6 @@ function verdictHtml(report: string): string {
 
   const { breaking, additive, cosmetic } = counts;
   const state = breaking > 0 ? 'bad' : 'ok';
-  const stateLabel = breaking > 0 ? 'BREAKING CHANGES' : 'ALL CLEAR';
   const chips = [
     `<span class="chip chip-breaking${breaking === 0 ? ' zero' : ''}"><span>breaking</span><strong>${breaking}</strong></span>`,
     `<span class="chip chip-additive${additive === 0 ? ' zero' : ''}"><span>additive</span><strong>${additive}</strong></span>`,
@@ -95,7 +147,7 @@ export function renderReportBody(report: string): string {
   const body: string[] = [];
   let inList = false;
   let inPanel = false;
-  let suppressHeading = false;
+  let pendingAffected: string[] | null = null;
   const closeList = (): void => {
     if (inList) {
       body.push('</ul>');
@@ -106,7 +158,6 @@ export function renderReportBody(report: string): string {
     const line = raw.trimEnd();
     if (line.startsWith('# ') || /^- (spec|fetched at|breaking):/.test(line)) {
       closeList();
-      suppressHeading = line.startsWith('# ');
       continue; // verdict header replaces h1 + meta lines
     }
     if (line.startsWith('## ')) {
@@ -115,19 +166,32 @@ export function renderReportBody(report: string): string {
         body.push('</section>');
         inPanel = false;
       }
+      if (pendingAffected !== null) {
+        body.push(affectedCardHtml(pendingAffected) ?? '');
+        pendingAffected = null;
+      }
       const heading = line.slice(3);
       if (heading === 'Breaking changes') {
         inPanel = true;
-        body.push(`<section class="breaking-panel"><h2>${inline(heading)}</h2>`);
+        body.push(`<section class="breaking-panel"><h2>${inline(heading)} <span class="cnt">…</span></h2>`);
+      } else if (heading === 'Possibly affected code in this repo') {
+        pendingAffected = [];
+        body.push(`<h2>${inline(heading)} <span class="cnt">…</span></h2>`);
       } else {
         body.push(`<h2>${inline(heading)}</h2>`);
       }
-    } else if (line.startsWith('- ')) {
+      continue;
+    }
+    if (line.startsWith('- ')) {
+      const item = line.slice(2);
+      if (pendingAffected !== null) {
+        pendingAffected.push(item);
+        continue;
+      }
       if (!inList) {
         body.push('<ul>');
         inList = true;
       }
-      const item = line.slice(2);
       const kindMatch = item.match(/^(`?)(removed|changed|added)\1\s/);
       const badge = kindMatch ? `<span class="kind kind-${kindMatch[2]}">${kindMatch[2]}</span> ` : '';
       const rest = kindMatch ? item.slice(kindMatch[0].length) : item;
@@ -141,7 +205,32 @@ export function renderReportBody(report: string): string {
   }
   closeList();
   if (inPanel) body.push('</section>');
-  return verdictHtml(report) + '\n' + body.join('\n');
+  if (pendingAffected !== null) body.push(affectedCardHtml(pendingAffected) ?? '');
+  const out = verdictHtml(report) + '\n' + body.join('\n');
+  // fill in real counts now that the items are known
+  return out
+    .replace('<h2>Breaking changes <span class="cnt">…</span></h2>', (m) => {
+      const c = parseCounts(report);
+      return c ? `<h2>Breaking changes <span class="cnt">${c.breaking}</span></h2>` : m;
+    })
+    .replace(
+      '<h2>Possibly affected code in this repo <span class="cnt">…</span></h2>',
+      `<h2>Possibly affected code in this repo <span class="cnt">${(pendingAffectedCount(report))}</span></h2>`,
+    );
+}
+
+function pendingAffectedCount(report: string): number {
+  let n = 0;
+  let collecting = false;
+  for (const raw of report.split('\n')) {
+    const line = raw.trimEnd();
+    if (line.startsWith('## ')) {
+      collecting = line.slice(3) === 'Possibly affected code in this repo';
+      continue;
+    }
+    if (collecting && line.startsWith('- ')) n++;
+  }
+  return n;
 }
 
 /** Full dark-theme page with a 5s live-refresh script. Pure. */
@@ -159,12 +248,18 @@ export function renderReportHtml(report: string): string {
     '  --amber: #FFB224; --green: #3DD68C;',
     '}',
     '* { box-sizing: border-box; }',
-    'body { background: var(--bg); color: var(--ink); margin: 0; padding: 40px 24px 64px;',
+    'body { background:',
+    '  radial-gradient(1200px 500px at 70% -10%, rgba(107, 169, 242, 0.05), transparent 60%),',
+    '  radial-gradient(900px 420px at 15% 0%, rgba(229, 72, 77, 0.04), transparent 55%),',
+    '  var(--bg);',
+    '  color: var(--ink); margin: 0; padding: 44px 24px 0;',
     '  font: 15px/1.6 -apple-system, "SF Pro Text", "Segoe UI", sans-serif; }',
     'main { max-width: 860px; margin: 0 auto; }',
     'h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; margin: 0; }',
     'h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;',
-    '  color: var(--ink-dim); margin: 36px 0 12px; }',
+    '  color: var(--ink-dim); margin: 38px 0 12px; display: flex; align-items: center; gap: 10px; }',
+    '.cnt { display: inline-flex; min-width: 20px; justify-content: center; padding: 1px 7px;',
+    '  border-radius: 20px; background: var(--panel-edge); color: var(--ink); font-size: 11px; }',
     '.mono, code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
     '',
     '/* verdict */',
@@ -195,7 +290,7 @@ export function renderReportHtml(report: string): string {
     '',
     '/* sections */',
     '.breaking-panel { background: var(--panel); border: 1px solid color-mix(in srgb, var(--red) 30%, var(--panel-edge));',
-    '  border-left: 3px solid var(--red-deep); border-radius: 10px; padding: 4px 20px 8px; margin: 36px 0 12px; }',
+    '  border-left: 3px solid var(--red-deep); border-radius: 10px; padding: 4px 20px 8px; }',
     '.breaking-panel h2 { margin-top: 16px; color: var(--red); }',
     '.breaking-panel li { border-bottom: 1px solid color-mix(in srgb, var(--red) 12%, var(--panel-edge)); }',
     '.breaking-panel li:last-child { border-bottom: none; }',
@@ -211,6 +306,27 @@ export function renderReportHtml(report: string): string {
     '  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); }',
     '.kind-added { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent);',
     '  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }',
+    '',
+    '/* affected-code cards */',
+    '.file-card { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px;',
+    '  margin: 10px 0 16px; overflow: hidden; }',
+    '.file-card header { display: flex; align-items: center; justify-content: space-between;',
+    '  padding: 9px 14px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--panel-edge); }',
+    '.file-card header code { color: var(--ink); font-size: 12.5px; }',
+    '.file-card .hits { color: var(--ink-faint); font-size: 11px;',
+    '  font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
+    '.code-row { display: flex; align-items: baseline; gap: 12px; padding: 8px 14px;',
+    '  border-bottom: 1px solid var(--panel-edge); font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
+    '.code-row:last-child { border-bottom: none; }',
+    '.ln { min-width: 28px; text-align: right; color: var(--ink-faint); font-size: 11.5px;',
+    '  user-select: none; flex-shrink: 0; }',
+    '.tok { color: var(--amber); font-size: 11px; border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);',
+    '  border-radius: 4px; padding: 0 5px; flex-shrink: 0; }',
+    '.snippet { font-size: 12.5px; color: var(--ink); overflow-x: auto; white-space: pre; }',
+    '.hit { background: color-mix(in srgb, var(--amber) 22%, transparent); border-radius: 3px; }',
+    '.code-row:hover { background: rgba(255,255,255,0.02); }',
+    '@media (max-width: 640px) { .tok { display: none; } .code-row { flex-wrap: wrap; } }',
+    '',
     'p { margin: 8px 0; }',
     'code { font-size: 12px; background: transparent; border: none; padding: 0; color: var(--ink); }',
     '.meta { color: var(--ink-faint); font-size: 12px; margin: 4px 0 8px;',
@@ -219,10 +335,19 @@ export function renderReportHtml(report: string): string {
     '  border-radius: 10px; padding: 16px 20px; }',
     '.error-card p { margin: 4px 0; }',
     '.error-card .mono { color: var(--red); font-size: 13px; }',
+    'footer { max-width: 860px; margin: 56px auto 0; padding: 20px 24px 28px; border-top: 1px solid var(--panel-edge);',
+    '  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;',
+    '  color: var(--ink-faint); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }',
+    'footer .dot { color: var(--green); }',
     '</style></head>',
     '<body><main id="report" aria-live="polite">',
     renderReportBody(report),
     '</main>',
+    '<footer>',
+    '  <span><span class="dot">●</span> api-sentinel v0.2</span>',
+    '  <span>snapshot → diff → classify → scan → fix</span>',
+    '  <span>refreshes every 5s</span>',
+    '</footer>',
     '<script>',
     'setInterval(async () => {',
     '  try {',

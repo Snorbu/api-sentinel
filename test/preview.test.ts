@@ -14,15 +14,18 @@ const REPORT = [
   '',
   '## Possibly affected code in this repo',
   '',
-  '- `demo/src/payment.ts:5` — token `paid` — `const x = body.paid;`',
+  '- `demo/src/payment.ts:1` — token `/v1/charges` — `const CHARGES_URL = "/v1/charges";`',
+  '- `demo/src/payment.ts:5` — token `paid` — `const body = (await res.json()) as { paid: boolean };`',
+  '- `demo/src/payment.ts:6` — token `paid` — `return body.paid; // uses the field that gets removed in v2`',
 ].join('\n');
 
 describe('renderReportHtml', () => {
-  it('renders headings, lists, code spans and the auto-refresh script', () => {
+  it('renders the verdict, panel, counts and auto-refresh script', () => {
     const html = renderReportHtml(REPORT);
     expect(html).toContain('<h1>');
-    expect(html).toContain('<h2>Breaking changes</h2>');
-    expect(html).toContain('<code>demo/src/payment.ts:5</code>');
+    expect(html).toContain('chip-breaking');
+    expect(html).toContain('<h2>Breaking changes <span class="cnt">3</span></h2>');
+    expect(html).toContain('class="breaking-panel"');
     expect(html).toContain('setInterval');
     expect(html).toContain('5000');
     expect(html).toContain('<!doctype html>');
@@ -50,7 +53,7 @@ describe('verdict header', () => {
     const html = renderReportHtml(REPORT);
     expect(html).toContain('pulse');
     expect(html).toContain('LIVE');
-    expect(html).toContain('id="checked"'); // updated per poll
+    expect(html).toContain('id="checked"');
   });
 
   it('renders the all-clear state when there are no breaking changes', () => {
@@ -63,6 +66,12 @@ describe('verdict header', () => {
     const html = renderReportHtml('# API Sentinel report\n\nerror: spec fetch failed: 500');
     expect(html).toContain('error-card');
   });
+
+  it('anchors a quiet footer outside the live region', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toContain('<footer');
+    expect(html).toMatch(/<\/main>\s*<footer/); // footer must survive innerHTML swaps
+  });
 });
 
 describe('kind badges', () => {
@@ -72,8 +81,31 @@ describe('kind badges', () => {
     );
     expect(html).toContain('<span class="kind kind-removed">removed</span>');
     expect(html).toContain('<span class="kind kind-changed">changed</span>');
-    // original backticked token is not duplicated after the badge
     expect(html).not.toContain('>removed</span> <code>removed</code>');
-    expect(html).toContain('class="breaking-panel"');
+  });
+});
+
+describe('affected-code cards', () => {
+  it('groups usages by file with line numbers, token chips and highlighted hits', () => {
+    const html = renderReportHtml(REPORT);
+    expect(html).toContain('file-card');
+    expect(html).toContain('<code>demo/src/payment.ts</code>');
+    expect(html).toContain('3 hits');
+    expect(html).toContain('<span class="ln">5</span>');
+    expect(html).toContain('<span class="ln">6</span>');
+    expect(html).toContain('<span class="tok">paid</span>');
+    expect(html).toContain('<span class="tok">/v1/charges</span>');
+    expect(html).toContain('class="hit"');
+    expect(html).toContain('<h2>Possibly affected code in this repo <span class="cnt">3</span></h2>');
+    expect(html).not.toContain('demo/src/payment.ts:5 — token'); // old flat row format is gone
+  });
+
+  it('renders one card per file when multiple files are affected', () => {
+    const two = REPORT.replace(
+      '- `demo/src/payment.ts:1` — token `/v1/charges` — `const CHARGES_URL = "/v1/charges";`',
+      '- `other/src/client.ts:9` — token `/v1/charges` — `fetch("/v1/charges")`',
+    );
+    const html = renderReportHtml(two);
+    expect(html.match(/class="file-card"/g)).toHaveLength(2);
   });
 });
