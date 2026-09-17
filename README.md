@@ -6,7 +6,16 @@
 
 Built as a YC-grade demo: `snapshot` → `check` in one command, no config needed to see it work.
 
-## Quickstart (no setup)
+## Quickstart (setup in ~2 minutes)
+
+```bash
+# in the repo that calls a vendor API:
+npx api-sentinel init            # writes apis.yaml by detecting your package.json deps
+npx api-sentinel snapshot --config apis.yaml   # baseline (run twice)
+npx api-sentinel check --config apis.yaml --repo .
+```
+
+## Instant demo (no setup)
 
 ```bash
 npx tsx src/cli.ts check \
@@ -134,6 +143,6 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 ## Dev
 
 ```bash
-npm test        # vitest, 82 tests, no network
+npm test        # vitest, 99 tests, no network
 npm run build   # tsc -> dist/
 ```
