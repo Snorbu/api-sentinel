@@ -13,18 +13,25 @@ export function flatten(spec: unknown): Map<string, string> {
 
 function walk(node: unknown, path: string, out: Map<string, string>): void {
   if (Array.isArray(node)) {
-    if (path.endsWith('.required')) {
+    if (path.endsWith('.required') && node.length > 0) {
       // one leaf per required member: required.paid = true
       for (const member of node) {
         if (typeof member === 'string') out.set(`${path}.${member}`, 'true');
       }
-    } else {
-      out.set(path, JSON.stringify(node));
+      return;
     }
+    // arrays (and empty `required`) stay whole-value leaves
+    out.set(path, JSON.stringify(node));
     return;
   }
   if (node !== null && typeof node === 'object') {
-    for (const [k, v] of Object.entries(node)) {
+    const entries = Object.entries(node);
+    if (entries.length === 0) {
+      // empty containers are leaves too — their presence/absence must be diffable
+      out.set(path, '{}');
+      return;
+    }
+    for (const [k, v] of entries) {
       walk(v, path === '' ? k : `${path}.${k}`, out);
     }
     return;
