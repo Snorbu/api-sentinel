@@ -1,0 +1,30 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Charges", "version": "1.1.0" },
+  "paths": {
+    "/v1/charges": {
+      "get": {
+        "operationId": "listCharges",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["customer_id"],
+                  "properties": {
+                    "customer_id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["succeeded"] },
+                    "note": { "type": "string", "description": "customer note" },
+                    "receipt_url": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

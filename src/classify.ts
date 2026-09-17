@@ -5,6 +5,7 @@ export type Severity = 'breaking' | 'additive' | 'cosmetic';
 export function classify(c: SpecChange): Severity {
   if (c.kind === 'removed') {
     if (/\.required\.[^.]+$/.test(c.path)) return 'cosmetic'; // field became optional
+    if (/\.description$/.test(c.path)) return 'cosmetic'; // docs-only removal
     return 'breaking';
   }
   if (c.kind === 'added') {

@@ -53,4 +53,8 @@ describe('classify', () => {
       'cosmetic',
     );
   });
+
+  it('removed description leaf = cosmetic', () => {
+    expect(classify({ kind: 'removed', path: '...properties.paid.description', before: '"x"' })).toBe('cosmetic');
+  });
 });
