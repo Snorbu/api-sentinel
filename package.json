@@ -21,5 +21,23 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true
+  },
+  "license": "MIT",
+  "description": "Dependabot for APIs \u2014 snapshot vendor OpenAPI specs, detect breaking changes, pinpoint affected code, generate fixes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sahilsri/api-sentinel.git"
+  },
+  "keywords": [
+    "openapi",
+    "breaking-changes",
+    "ci",
+    "devtools",
+    "api",
+    "llm",
+    "dependabot"
+  ],
+  "engines": {
+    "node": ">=20"
   }
 }
