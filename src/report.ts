@@ -1,4 +1,5 @@
 import { classify } from './classify.js';
+import { explainChange } from './explain.js';
 import type { SpecChange } from './diff.js';
 import type { UsageHit } from './scan.js';
 
@@ -28,7 +29,10 @@ export function buildReport(input: ReportInput): string {
   }
   lines.push('## Breaking changes');
   lines.push('');
-  for (const c of breaking) lines.push(`- \`${c.kind}\` \`${c.path}\``);
+  for (const c of breaking) {
+    lines.push(`- \`${c.kind}\` \`${c.path}\``);
+    lines.push(`  → ${explainChange(c)}`);
+  }
   lines.push('');
   if (input.usages.length > 0) {
     lines.push('## Possibly affected code in this repo');

@@ -30,3 +30,23 @@ describe('buildReport', () => {
     expect(md).toContain('No breaking changes detected');
   });
 });
+
+describe('explanations in report', () => {
+  it('renders the plain-English sentence under each breaking change', () => {
+    const md = buildReport({
+      apiName: 'stripe',
+      specUrl: 'u',
+      fetchedAt: 't',
+      changes: [
+        {
+          kind: 'removed',
+          path: 'paths./v1/charges.get.responses.200.content.application/json.schema.properties.paid.type',
+          before: '"boolean"',
+        },
+      ],
+      usages: [],
+    });
+    expect(md).toContain('→');
+    expect(md).toContain('code reading it now gets `undefined`');
+  });
+});
