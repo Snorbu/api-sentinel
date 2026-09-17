@@ -20,7 +20,7 @@ export async function chatCompletion(opts: ChatOpts, fetchImpl: typeof fetch = f
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ model, messages: opts.messages }),
   });
