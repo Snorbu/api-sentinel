@@ -29,6 +29,28 @@ export function explainChange(c: SpecChange): string {
   const field = fieldName(c.path);
   const ep = endpoint(c.path);
 
+  const param = c.path.match(/\.parameters\.([^.:]+):([A-Za-z0-9_-]+)(?:\.|$)/);
+  if (param) {
+    const [, location, name] = param as unknown as [string, string, string];
+    if (c.kind === 'removed') {
+      return `${location} parameter \`${name}\` was removed from \`${ep}\` — requests sending it may be rejected.`;
+    }
+    if (c.kind === 'added' && c.path.endsWith('.required') && c.after === 'true') {
+      return `new required ${location} parameter \`${name}\` on \`${ep}\` — requests omitting it will fail.`;
+    }
+    if (c.kind === 'added') {
+      return `new optional ${location} parameter \`${name}\` on \`${ep}\` — safe to ignore.`;
+    }
+    if (c.path.endsWith('.required')) {
+      return c.after === 'true'
+        ? `${location} parameter \`${name}\` on \`${ep}\` is now required — requests omitting it will fail.`
+        : `${location} parameter \`${name}\` on \`${ep}\` is now optional — no impact.`;
+    }
+    if (c.path.endsWith('.type')) {
+      return `${location} parameter \`${name}\` on \`${ep}\` changed type from ${c.before ?? '?'} to ${c.after ?? '?'}.`;
+    }
+  }
+
   if (c.kind === 'removed') {
     if (/\.required\.[^.]+$/.test(c.path)) {
       return `field \`${field}\` stopped being required — calls keep working; you may drop it.`;

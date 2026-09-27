@@ -10,6 +10,9 @@ export function classify(c: SpecChange): Severity {
   }
   if (c.kind === 'added') {
     if (/\.required\.[^.]+$/.test(c.path)) return 'breaking'; // new required param
+    // a whole parameter appearing already-required is breaking
+    if (/\.parameters\.[^.]+\.required$/.test(c.path) && c.after === 'true') return 'breaking';
+    if (/\.parameters\.[^.]+\.(name|in)$/.test(c.path)) return 'additive'; // new optional parameter
     return 'additive';
   }
   if (c.path.endsWith('.enum')) {
@@ -17,6 +20,8 @@ export function classify(c: SpecChange): Severity {
     const after = JSON.parse(c.after ?? '[]') as unknown[];
     return after.every((v) => before.includes(v)) ? 'breaking' : 'additive'; // shrunk vs grown
   }
+  // optional -> required on an existing parameter
+  if (/\.parameters\.[^.]+\.required$/.test(c.path)) return c.after === 'true' ? 'breaking' : 'cosmetic';
   if (c.path.endsWith('.type')) return 'breaking';
   return 'cosmetic';
 }

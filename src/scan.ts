@@ -20,6 +20,8 @@ export function extractTokens(changes: SpecChange[]): string[] {
     if (url) tokens.add(url[1]!);
     const prop = c.path.match(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/);
     if (prop && prop[1]!.length > 2) tokens.add(prop[1]!); // skip tiny names like "id"
+    const param = c.path.match(/\.parameters\.[^.:]+:([A-Za-z0-9_]+)(?:\.|$)/);
+    if (param && param[1]!.length > 2) tokens.add(param[1]!);
   }
   return [...tokens];
 }

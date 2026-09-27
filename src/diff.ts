@@ -1,3 +1,5 @@
+import { normalizeSpec } from './semantic.js';
+
 export interface SpecChange {
   kind: 'removed' | 'added' | 'changed';
   path: string;
@@ -39,9 +41,14 @@ function walk(node: unknown, path: string, out: Map<string, string>): void {
   out.set(path, JSON.stringify(node));
 }
 
+/**
+ * Diff two specs. Both sides are semantically normalized first (local `$ref`s
+ * inlined, `oneOf`/`anyOf`/`allOf` and `parameters` order neutralised) so only
+ * meaningful contract changes surface.
+ */
 export function diffSpecs(oldSpec: unknown, newSpec: unknown): SpecChange[] {
-  const a = flatten(oldSpec);
-  const b = flatten(newSpec);
+  const a = flatten(normalizeSpec(oldSpec));
+  const b = flatten(normalizeSpec(newSpec));
   const changes: SpecChange[] = [];
   for (const [path, before] of a) {
     const after = b.get(path);

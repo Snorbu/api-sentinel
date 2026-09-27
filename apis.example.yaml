@@ -1,3 +1,5 @@
 apis:
   - name: openai
     specUrl: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+    # optional (v0.3): a changelog/docs page watched for deprecation notices
+    changelogUrl: https://platform.openai.com/docs/changelog

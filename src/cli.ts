@@ -81,6 +81,17 @@ async function runMain(argv: string[]): Promise<number> {
         const spec = await fetchSpec(api.specUrl);
         const file = saveSnapshot(rootDir, api.name, spec, new Date().toISOString());
         console.log(`snapshot saved: ${api.name} -> ${file}`);
+        if (api.changelogUrl !== undefined) {
+          const { fetchChangelog, saveChangelogSnapshot } = await import('./changelog.js');
+          try {
+            const text = await fetchChangelog(api.changelogUrl);
+            const clFile = saveChangelogSnapshot(rootDir, api.name, text);
+            console.log(`changelog saved: ${api.name} -> ${clFile}`);
+          } catch (err) {
+            // a flaky docs page must not fail the spec snapshot
+            console.error(`warning: ${api.name}: changelog: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
       } catch (err) {
         failed.push(api.name);
         console.error(`error: ${api.name}: ${err instanceof Error ? err.message : String(err)}`);

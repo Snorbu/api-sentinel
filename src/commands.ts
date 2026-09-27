@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { analyzeChangelog, loadChangelog, loadPreviousChangelog, type ChangelogFinding } from './changelog.js';
 import { classify } from './classify.js';
 import { loadConfig } from './config.js';
 import { diffSpecs, type SpecChange } from './diff.js';
@@ -33,6 +34,7 @@ export function runCheck(deps: CheckDeps): CheckResult {
     oldSpec: unknown;
     newSpec: unknown;
     fetchedAt: string;
+    changelog: ChangelogFinding[];
   }[] = [];
   const skips: string[] = [];
 
@@ -43,6 +45,7 @@ export function runCheck(deps: CheckDeps): CheckResult {
       oldSpec: JSON.parse(readFileSync(deps.oldPath, 'utf8')),
       newSpec: JSON.parse(readFileSync(deps.newPath, 'utf8')),
       fetchedAt: new Date().toISOString(),
+      changelog: [],
     });
   } else {
     const cfg = loadConfig(deps.configPath ?? 'apis.yaml');
@@ -59,6 +62,10 @@ export function runCheck(deps: CheckDeps): CheckResult {
         oldSpec: prev,
         newSpec: cur,
         fetchedAt: new Date().toISOString(),
+        changelog: analyzeChangelog(
+          loadPreviousChangelog(deps.rootDir, api.name),
+          loadChangelog(deps.rootDir, api.name),
+        ),
       });
     }
   }
@@ -72,6 +79,7 @@ export function runCheck(deps: CheckDeps): CheckResult {
     cosmetic: number;
     changes: SpecChange[];
     usages: { file: string; line: number; token: string; snippet: string }[];
+    changelog: ChangelogFinding[];
   }[] = [];
   let anyFailing = false;
   const rules = loadIgnore(deps.repoDir);
@@ -80,7 +88,14 @@ export function runCheck(deps: CheckDeps): CheckResult {
     const tokens = filterTokens(extractTokens(changes), rules);
     const usages = tokens.length > 0 ? filterHits(scanRepo(deps.repoDir, tokens), rules) : [];
     sections.push(
-      buildReport({ apiName: e.apiName, specUrl: e.specUrl, fetchedAt: e.fetchedAt, changes, usages }),
+      buildReport({
+        apiName: e.apiName,
+        specUrl: e.specUrl,
+        fetchedAt: e.fetchedAt,
+        changes,
+        usages,
+        changelog: e.changelog,
+      }),
     );
     jsonApis.push({
       apiName: e.apiName,
@@ -90,6 +105,7 @@ export function runCheck(deps: CheckDeps): CheckResult {
       cosmetic: changes.filter((c) => classify(c) === 'cosmetic').length,
       changes,
       usages,
+      changelog: e.changelog,
     });
     if (exitCodeFor(changes, deps.failOn ?? 'breaking') === 1) anyFailing = true;
   }

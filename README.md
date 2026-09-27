@@ -78,6 +78,30 @@ npx tsx src/cli.ts check    --config apis.yaml --repo .
 
 Snapshots live in `snapshots/<name>/{previous,current}.json` — commit them so CI can diff across runs. Specs may be JSON or YAML.
 
+## Semantic diffing
+
+Before diffing, both specs are normalized so refactors don't masquerade as changes:
+
+- local `$ref`s (`#/components/schemas/…`, `#/$defs/…`) are inlined — moving a schema behind a ref is a no-op (recursive refs are left intact).
+- `oneOf` / `anyOf` / `allOf` branches are content-sorted — reshuffles are a no-op.
+- `enum`, `required`, and `tags` member order is normalized.
+- `parameters` arrays are keyed by `in:name`, so a parameter is tracked by identity: reordering is silent, while a **new required parameter** or an optional one **becoming required** is reported as breaking (and its name is fed to the code scanner).
+
+## Watching changelogs, not just specs
+
+Vendors usually announce a deprecation in prose weeks before the spec changes. Add `changelogUrl` to any api entry:
+
+```yaml
+apis:
+  - name: acme
+    specUrl: https://acme.dev/openapi.json
+    changelogUrl: https://acme.dev/changelog
+```
+
+`snapshot` saves the page next to the spec (`snapshots/<name>/changelog.{current,previous}.txt`, rotated the same way). `check` diffs the two snapshots and lists **newly published lines containing risk language** (deprecated, sunset, will be removed, breaking, migrate, …) under *Vendor changelog signals* in the report.
+
+These signals are **informational** — prose is a heuristic, so it never changes the exit code. A failing changelog fetch warns but never fails `snapshot`.
+
 ## Severity rules
 
 | Change | Severity |
@@ -87,6 +111,8 @@ Snapshots live in `snapshots/<name>/{previous,current}.json` — commit them so 
 | Property `.type` changed | breaking |
 | Enum values **shrunk** (removed a case you may handle) | breaking |
 | Endpoint/operation removed | breaking |
+| New **required** parameter, or a parameter becoming required | breaking |
+| Parameter reorder / `oneOf` reshuffle / `$ref` extraction | not reported |
 | New optional property | additive |
 | Enum values grown | additive |
 | Field stopped being required | cosmetic |
@@ -131,18 +157,18 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 
 - [x] **v0.1** — snapshot → diff → classify → scan → report CLI + live preview
 - [x] **v0.2** — LLM-generated fixes (`fix` command: patches affected call sites, dry-run default, verbatim-match validation)
-- [ ] **v0.3** — per-vendor agents that also watch changelogs/docs, not just specs
-- [ ] **v0.4** — semantically-aware OpenAPI differ (`oneOf` reshuffles, parameter arrays)
+- [x] **v0.3** — per-vendor changelog/docs watching (`changelogUrl`: snapshots the page, diffs it, flags new deprecation language)
+- [x] **v0.4** — semantically-aware OpenAPI differ (`$ref` inlining, `oneOf` reshuffles, parameter arrays keyed by `in:name`)
 
 ## Who it's for
 
 **Honest wedge:** teams and agents calling vendor APIs over **raw HTTP** (fetch/requests/scripts), where no compiler protects you. If you use typed vendor SDKs, you already have partial protection — api-sentinel detects that (`detectSdks`) and tells you what's still uncovered: SDK updates lag the spec, and code bypassing the SDK is exposed.
 
-**Known limitations, stated up front:** spec diffing is leaf-based (semantic `oneOf`/`$ref` diffing is on the roadmap); scanner tokens can false-positive in big repos (suppress via `.sentinelignore`); LLM patches are suggestions with verbatim-match validation, not guarantees — review them.
+**Known limitations, stated up front:** spec diffing is leaf-based on top of semantic normalization (`$ref`s are inlined only for local pointers; remote `$ref`s are not followed); scanner tokens can false-positive in big repos (suppress via `.sentinelignore`); LLM patches are suggestions with verbatim-match validation, not guarantees — review them.
 
 ## Dev
 
 ```bash
-npm test        # vitest, 99 tests, no network
+npm test        # vitest, 125 tests, no network
 npm run build   # tsc -> dist/
 ```
