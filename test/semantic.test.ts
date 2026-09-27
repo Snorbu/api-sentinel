@@ -101,3 +101,32 @@ describe('semantic diffing (v0.4)', () => {
     expect(canonicalJson(normalizeSpec(once))).toBe(canonicalJson(once));
   });
 });
+
+describe('pruneDefinitions', () => {
+  it('drops inlined definition containers without leaving empty husks', () => {
+    const out = normalizeSpec({
+      components: { schemas: { A: { type: 'string' } } },
+      $defs: { B: { type: 'number' } },
+      paths: {},
+    }) as any;
+    expect(out.components).toBeUndefined();
+    expect(out.$defs).toBeUndefined();
+  });
+
+  it('keeps securitySchemes', () => {
+    const out = normalizeSpec({
+      components: { schemas: { A: { type: 'string' } }, securitySchemes: { bearer: { type: 'http' } } },
+    }) as any;
+    expect(out.components.securitySchemes.bearer.type).toBe('http');
+    expect(out.components.schemas).toBeUndefined();
+  });
+
+  it('extracting a schema into components/ is not a change', () => {
+    const inlineSpec = { paths: { '/c': { get: { x: { type: 'object', properties: { a: { type: 'string' } } } } } } };
+    const refSpec = {
+      components: { schemas: { X: { type: 'object', properties: { a: { type: 'string' } } } } },
+      paths: { '/c': { get: { x: { $ref: '#/components/schemas/X' } } } },
+    };
+    expect(diffSpecs(inlineSpec, refSpec)).toEqual([]);
+  });
+});

@@ -82,7 +82,7 @@ Snapshots live in `snapshots/<name>/{previous,current}.json` — commit them so 
 
 Before diffing, both specs are normalized so refactors don't masquerade as changes:
 
-- local `$ref`s (`#/components/schemas/…`, `#/$defs/…`) are inlined — moving a schema behind a ref is a no-op (recursive refs are left intact).
+- local `$ref`s (`#/components/schemas/…`, `#/$defs/…`) are inlined and the (now duplicate) definition containers are dropped — extracting a schema into `components/` is a no-op (recursive refs are left intact; `securitySchemes` is kept).
 - `oneOf` / `anyOf` / `allOf` branches are content-sorted — reshuffles are a no-op.
 - `enum`, `required`, and `tags` member order is normalized.
 - `parameters` arrays are keyed by `in:name`, so a parameter is tracked by identity: reordering is silent, while a **new required parameter** or an optional one **becoming required** is reported as breaking (and its name is fed to the code scanner).
@@ -169,6 +169,6 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 ## Dev
 
 ```bash
-npm test        # vitest, 125 tests, no network
+npm test        # vitest, 128 tests, no network
 npm run build   # tsc -> dist/
 ```

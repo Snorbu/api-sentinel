@@ -1,7 +1,9 @@
 import type { SpecChange } from './diff.js';
 
 function fieldName(path: string): string {
-  const m = path.match(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/);
+  // the *deepest* property name is the one that actually changed
+  const all = [...path.matchAll(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/g)];
+  const m = all[all.length - 1];
   if (m) return m[1]!;
   const req = path.match(/\.required\.([A-Za-z0-9_]+)$/);
   if (req) return req[1]!;

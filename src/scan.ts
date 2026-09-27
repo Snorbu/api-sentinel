@@ -18,7 +18,10 @@ export function extractTokens(changes: SpecChange[]): string[] {
     if (classify(c) !== 'breaking') continue;
     const url = c.path.match(/^paths\.(\S+?)\.(get|post|put|patch|delete|head|options)\./);
     if (url) tokens.add(url[1]!);
-    const prop = c.path.match(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/);
+    // the deepest property name is the changed one; the containers on the way
+    // down ("data", "items") are context, not the break.
+    const props = [...c.path.matchAll(/\.properties\.([A-Za-z0-9_]+)(?:\.|$)/g)];
+    const prop = props[props.length - 1];
     if (prop && prop[1]!.length > 2) tokens.add(prop[1]!); // skip tiny names like "id"
     const param = c.path.match(/\.parameters\.[^.:]+:([A-Za-z0-9_]+)(?:\.|$)/);
     if (param && param[1]!.length > 2) tokens.add(param[1]!);

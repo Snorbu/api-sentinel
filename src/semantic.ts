@@ -105,7 +105,48 @@ export function canonicalizeSpec(spec: unknown): unknown {
   return walk(spec, '');
 }
 
-/** Full semantic normalization: deref then canonicalize. */
+/**
+ * Containers that exist only to be `$ref`-ed. Once refs are inlined they are
+ * duplicate copies of the contract, so keeping them makes "extract this schema
+ * into components/" look like a pile of added (sometimes "breaking") leaves.
+ * `securitySchemes` is not a ref target in practice, so it stays.
+ */
+const DEFINITION_CONTAINERS = [
+  ['components', 'schemas'],
+  ['components', 'responses'],
+  ['components', 'parameters'],
+  ['components', 'requestBodies'],
+  ['components', 'headers'],
+  ['components', 'examples'],
+  ['components', 'links'],
+  ['components', 'callbacks'],
+  ['definitions'], // swagger 2.0
+  ['$defs'],
+];
+
+/** Drop inlined definition containers (non-mutating). */
+export function pruneDefinitions(spec: unknown): unknown {
+  if (spec === null || typeof spec !== 'object' || Array.isArray(spec)) return spec;
+  const root = { ...(spec as Record<string, unknown>) };
+  for (const path of DEFINITION_CONTAINERS) {
+    if (path.length === 1) {
+      delete root[path[0]!];
+      continue;
+    }
+    const [parent, child] = path as [string, string];
+    const node = root[parent];
+    if (node !== null && typeof node === 'object' && child in (node as Record<string, unknown>)) {
+      const copy = { ...(node as Record<string, unknown>) };
+      delete copy[child];
+      // an emptied container would itself read as an added/removed leaf
+      if (Object.keys(copy).length === 0) delete root[parent];
+      else root[parent] = copy;
+    }
+  }
+  return root;
+}
+
+/** Full semantic normalization: deref, drop the now-duplicate definitions, canonicalize. */
 export function normalizeSpec(spec: unknown): unknown {
-  return canonicalizeSpec(resolveRefs(spec));
+  return canonicalizeSpec(pruneDefinitions(resolveRefs(spec)));
 }
