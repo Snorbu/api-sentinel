@@ -161,8 +161,34 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 | `API_SENTINEL_LLM_BASEURL` | chat-completions base URL | `https://api.openai.com/v1` |
 | `API_SENTINEL_LLM_KEY` | API key (required for `fix`) | — |
 | `API_SENTINEL_LLM_MODEL` | model id | `gpt-4o-mini` |
+| `API_SENTINEL_HTTP_TIMEOUT_MS` | deadline for spec/changelog/webhook calls | `30000` |
 
-`fix` is **dry-run by default**; pass `--yes` to write. Exit codes: `0` all breaking changes patched (or none needed), `1` at least one breaking change the model couldn't patch, `2` usage error.
+Every outbound request has a hard deadline (LLM calls get 120 s) — an unattended CI job never hangs on a stalled vendor endpoint.
+
+### Patches are verified, or they are undone
+
+A patch that matches verbatim can still be wrong. Pass `--verify` and the whole batch becomes transactional: every touched file is snapshotted, the patches are applied, your command runs, and **if it fails every file is restored byte-for-byte**.
+
+```bash
+api-sentinel fix --config apis.yaml --repo . --yes --verify "npm run typecheck"
+```
+
+Observed on a real run (model invents a `body.settled` field that does not exist):
+
+```
+verify failed (exit 2): `tsc -p tsconfig.json`
+src/payment.ts(6,15): error TS2339: Property 'settled' does not exist on type '{ paid: boolean; }'.
+all patches were rolled back — the repo is exactly as you left it.
+rolled back: 0 patch(es)              # exit 1
+```
+
+and with a correct migration, same command: `verify passed` → `applied: 2 patch(es)` → exit 0.
+
+`fix` is **dry-run by default**; pass `--yes` to write. Dry-run and `--yes` apply identical gates (including the multi-occurrence ambiguity check), so a dry-run never promises a patch that `--yes` would refuse.
+
+Identical patches proposed for several changes are applied **once**, credited to the change that proposed them first — so a change is never reported as "fixed" by another change's edit.
+
+Exit codes: `0` every breaking change patched and verification passed (or none needed) · `1` a change the model couldn't patch, or verification failed / rolled back · `2` usage error.
 
 ## Roadmap
 
@@ -180,7 +206,7 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 ## Dev
 
 ```bash
-npm test        # vitest, 138 tests, no network
+npm test        # vitest, 146 tests, no network
 npm run typecheck
 npm run build   # tsc -> dist/
 ```

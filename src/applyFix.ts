@@ -47,10 +47,8 @@ export function applyFixesDetailed(rootDir: string, patches: (FixPatch & { all?:
       skipped.push(p.file); // find vanished or never existed — TOCTOU gate
       continue;
     }
-    if (dryRun) {
-      applied.push(p.file);
-      continue;
-    }
+    // NB: ambiguity is checked before the dry-run bail-out, so `--dry-run` and
+    // `--yes` always agree about what would happen.
     let next: string;
     if (p.all === true) {
       next = content.split(p.find).join(p.replace);
@@ -61,6 +59,10 @@ export function applyFixesDetailed(rootDir: string, patches: (FixPatch & { all?:
         continue;
       }
       next = content.slice(0, first) + p.replace + content.slice(first + p.find.length);
+    }
+    if (dryRun) {
+      applied.push(p.file);
+      continue;
     }
     writeFileSync(abs, next);
     applied.push(p.file);

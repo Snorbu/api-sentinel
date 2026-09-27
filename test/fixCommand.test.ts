@@ -38,8 +38,15 @@ describe('runFix', () => {
       dryRun: true,
       llm,
     });
-    expect(res.appliedCount).toBe(3); // 3 breaking changes -> 3 proposals
+    // the stub returns the SAME edit for each change: it is one patch, credited
+    // to the change that proposed it first — not three "fixes"
+    expect(res.appliedCount).toBe(1);
+    expect(res.patches).toHaveLength(1);
     expect(calls).toBe(3);
+    expect(res.perChange[0]!.patches).toHaveLength(1);
+    expect(res.perChange.slice(1).every((pc) => pc.patches.length === 0 && pc.duplicates === 1)).toBe(true);
+    // a change covered only by someone else's duplicate is not counted unresolved
+    expect(res.unresolved).toHaveLength(0);
     const after = readFileSync(join('demo', 'src', 'payment.ts'), 'utf8');
     expect(after).toContain('{ paid: boolean }'); // untouched by dry-run
   });
@@ -79,5 +86,26 @@ describe('runFix', () => {
     expect(calls).toBe(0);
     expect(res.appliedCount).toBe(0);
     expect(res.errors).toHaveLength(0);
+  });
+});
+
+describe('unresolved accounting', () => {
+  it('reports changes the model could not patch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fixrun3-'));
+    const res = await runFix({
+      rootDir: root,
+      repoDir: 'demo',
+      oldPath: resolve('test/fixtures/spec-v1.json'),
+      newPath: resolve('test/fixtures/spec-v2.json'),
+      apiName: 'demo',
+      dryRun: true,
+      // valid JSON, but the anchor does not exist in the file -> zero usable patches
+      llm: () =>
+        Promise.resolve(
+          JSON.stringify({ patches: [{ file: 'src/payment.ts', find: 'NOPE', replace: 'x', explanation: 'e' }] }),
+        ),
+    });
+    expect(res.patches).toHaveLength(0);
+    expect(res.unresolved.length).toBeGreaterThan(0);
   });
 });

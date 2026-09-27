@@ -11,6 +11,7 @@
  * prose is a heuristic signal, not a contract.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fetchWithTimeout } from './http.js';
 import { join } from 'node:path';
 
 export interface ChangelogFinding {
@@ -38,7 +39,11 @@ const RISK_KEYWORDS = [
 
 /** Fetch a changelog/docs page as plain text. */
 export async function fetchChangelog(url: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  const res = await fetchImpl(url, { headers: { 'user-agent': 'api-sentinel/0.1' } });
+  const res = await fetchWithTimeout(
+    url,
+    { headers: { 'user-agent': 'api-sentinel/0.1' }, label: 'changelog fetch' },
+    fetchImpl,
+  );
   if (!res.ok) throw new Error(`changelog fetch failed: ${res.status} ${url}`);
   return await res.text();
 }

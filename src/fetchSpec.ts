@@ -1,5 +1,11 @@
+import { fetchWithTimeout } from './http.js';
+
 export async function fetchSpec(url: string, fetchImpl: typeof fetch = fetch): Promise<unknown> {
-  const res = await fetchImpl(url, { headers: { 'user-agent': 'api-sentinel/0.1' } });
+  const res = await fetchWithTimeout(
+    url,
+    { headers: { 'user-agent': 'api-sentinel/0.1' }, label: 'spec fetch' },
+    fetchImpl,
+  );
   if (!res.ok) throw new Error(`spec fetch failed: ${res.status} ${url}`);
   const text = await res.text();
   const trimmed = text.trimStart();

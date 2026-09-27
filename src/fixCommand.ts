@@ -7,6 +7,7 @@ import { loadConfig } from './config.js';
 import { loadPreviousSnapshot, loadSnapshot } from './snapshot.js';
 import { filterChanges, filterHits, filterTokens, loadIgnore } from './ignore.js';
 import { extractTokens, scanRepo, type UsageHit } from './scan.js';
+import { dedupePatches } from './verify.js';
 
 export interface FixDeps {
   rootDir: string;
@@ -24,12 +25,19 @@ export interface FixResult {
   perChange: {
     change: SpecChange;
     usages: UsageHit[];
+    /** Patches unique to this change (duplicates are credited to the first owner). */
     patches: FixPatch[];
+    /** Patches this change proposed that another change already covers. */
+    duplicates: number;
     error?: string;
   }[];
+  /** Deduped, ready to apply. */
+  patches: FixPatch[];
   appliedCount: number;
   skippedCount: number;
   errors: string[];
+  /** Breaking changes with affected code that produced no usable patch. */
+  unresolved: SpecChange[];
 }
 
 export async function runFix(deps: FixDeps): Promise<FixResult> {
@@ -76,18 +84,30 @@ export async function runFix(deps: FixDeps): Promise<FixResult> {
     const prompt = buildFixPrompt({ apiName: deps.apiName, change, usages, files });
     try {
       const raw = await deps.llm(prompt);
-      const patches = parseFixResponse(raw, files)
+      const proposed = parseFixResponse(raw, files)
         // scanner paths are cwd-relative; the applier resolves rootDir-relative — normalize here
         .map((p) => ({ ...p, file: relative(deps.repoDir, resolve(p.file)) }));
-      perChange.push({ change, usages, patches });
-      allPatches.push(...patches);
+      // A model fed several changes often returns the same edit each time. Credit
+      // it once, to the change that proposed it first — otherwise a change looks
+      // "fixed" by someone else's patch and the exit code lies.
+      const fresh = dedupePatches([...allPatches, ...proposed]).slice(allPatches.length);
+      perChange.push({ change, usages, patches: fresh, duplicates: proposed.length - fresh.length });
+      allPatches.push(...fresh);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      perChange.push({ change, usages, patches: [], error: msg.slice(0, 200) });
+      perChange.push({ change, usages, patches: [], duplicates: 0, error: msg.slice(0, 200) });
       errors.push(msg.slice(0, 200));
     }
   }
 
   const { applied, skipped } = applyFixes(deps.repoDir, allPatches, deps.dryRun);
-  return { perChange, appliedCount: applied.length, skippedCount: skipped.length, errors };
+  const unresolved = perChange.filter((pc) => pc.patches.length === 0 && pc.duplicates === 0).map((pc) => pc.change);
+  return {
+    perChange,
+    patches: allPatches,
+    appliedCount: applied.length,
+    skippedCount: skipped.length,
+    errors,
+    unresolved,
+  };
 }

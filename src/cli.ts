@@ -205,6 +205,8 @@ async function runMain(argv: string[]): Promise<number> {
         ],
       });
 
+    const verifyCommand = args.verify === undefined ? undefined : String(args.verify);
+
     // review mode: patches come back unapplied; the dev accepts them one by one
     const res = await runFix({ rootDir, repoDir, configPath, oldPath, newPath, apiName, dryRun: true, llm });
 
@@ -212,16 +214,25 @@ async function runMain(argv: string[]): Promise<number> {
       console.log(`\n## ${pc.change.kind} — ${pc.change.path}`);
       for (const u of pc.usages) console.log(`   affected: ${u.file}:${u.line}`);
       for (const p of pc.patches) console.log(`   fix: ${p.explanation}`);
+      if (pc.duplicates > 0) console.log(`   (${pc.duplicates} duplicate patch(es) already covered by an earlier change)`);
+      if (pc.patches.length === 0 && pc.duplicates === 0 && pc.error === undefined) {
+        console.log('   no usable patch: the model returned nothing that matched the file verbatim');
+      }
       if (pc.error) console.log(`   error: ${pc.error}`);
     }
 
-    const allPatches = res.perChange.flatMap((pc) => pc.patches);
+    const allPatches = res.patches;
     let appliedCount = 0;
     let skippedCount = res.skippedCount;
+    let rolledBack = false;
+    let verifyFailed = false;
 
     if (dryRun) {
       appliedCount = res.appliedCount;
-      console.log(`\ndry-run: ${appliedCount} patch(es) would apply. Re-run with --yes, or run without flags in a terminal to review each one.`);
+      console.log(
+        `\ndry-run: ${appliedCount} patch(es) would apply. Re-run with --yes, or run without flags in a terminal to review each one.`,
+      );
+      if (verifyCommand !== undefined) console.log(`         then \`${verifyCommand}\` would gate the result.`);
     } else if (interactive) {
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const review = await reviewPatches(repoDir, allPatches, {
@@ -230,20 +241,45 @@ async function runMain(argv: string[]): Promise<number> {
       rl.close();
       appliedCount = review.applied.length;
       skippedCount += review.decisions.filter((d) => d.decision === 'skip').length;
+      if (verifyCommand !== undefined && appliedCount > 0) {
+        const { runVerify } = await import('./verify.js');
+        const outcome = runVerify(repoDir, verifyCommand);
+        if (!outcome.ok) {
+          verifyFailed = true;
+          console.error(`\nverify failed (exit ${outcome.exitCode}) after review:\n${outcome.output}`);
+          console.error('patches were accepted interactively and left in place — revert with git if needed.');
+        } else {
+          console.log(`\nverify passed: \`${verifyCommand}\``);
+        }
+      }
     } else {
-      // --yes: non-interactive, trust the validator, write everything
-      const { applyFixes } = await import('./applyFix.js');
-      const r = applyFixes(repoDir, allPatches, false);
+      // --yes: non-interactive. With --verify the whole batch is transactional.
+      const { applyFixesVerified } = await import('./verify.js');
+      const r = applyFixesVerified(repoDir, allPatches, { verifyCommand });
       appliedCount = r.applied.length;
       skippedCount += r.skipped.length;
+      rolledBack = r.rolledBack;
+      if (r.verified !== undefined) {
+        if (r.verified.ok) console.log(`\nverify passed: \`${verifyCommand}\``);
+        else {
+          verifyFailed = true;
+          console.error(
+            `\nverify failed (exit ${r.verified.exitCode}): \`${verifyCommand}\`\n${r.verified.output}`,
+          );
+          console.error('all patches were rolled back — the repo is exactly as you left it.');
+        }
+      }
     }
 
     console.log(
-      `\n${dryRun ? 'would apply' : 'applied'}: ${appliedCount} patch(es)` +
+      `\n${dryRun ? 'would apply' : rolledBack ? 'rolled back' : 'applied'}: ${appliedCount} patch(es)` +
         (skippedCount > 0 ? `, skipped: ${skippedCount}` : ''),
     );
-    const unresolved = res.perChange.filter((pc) => pc.patches.length === 0).length;
-    return unresolved > 0 ? 1 : 0;
+    if (res.unresolved.length > 0) {
+      console.error(`unresolved breaking changes: ${res.unresolved.length}`);
+      for (const c of res.unresolved) console.error(`  - ${c.kind} ${c.path}`);
+    }
+    return res.unresolved.length > 0 || verifyFailed || rolledBack ? 1 : 0;
   }
 
   console.error(`unknown command: ${cmd}. usage:
@@ -252,6 +288,8 @@ async function runMain(argv: string[]): Promise<number> {
   api-sentinel check    --config apis.yaml --repo ./ [--out report.md] [--fail-on breaking|additive|none]
                         [--require-baseline] [--fail-on-changelog] [--format json]
   api-sentinel check    --old old.json --new new.json --api demo --repo ./ [--out report.md] [--fail-on ...]
+  api-sentinel fix      [--old o.json --new n.json | --config apis.yaml] --repo ./
+                        [--dry-run | --yes] [--verify "npm run typecheck"]
   api-sentinel preview  [--old o.json --new n.json | --config apis.yaml] [--repo ./] [--port 4173]`);
   return 2;
 }

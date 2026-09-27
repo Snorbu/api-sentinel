@@ -89,3 +89,16 @@ describe('multi-occurrence handling', () => {
     expect((readFileSync(file, 'utf8').match(/extractNew/g) ?? []).length).toBe(3);
   });
 });
+
+describe('dry-run parity', () => {
+  it('dry-run refuses an ambiguous patch exactly like a real apply', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ambig-'));
+    writeFileSync(join(root, 'a.ts'), 'x();\nx();\n');
+    const p = [{ file: 'a.ts', find: 'x();', replace: 'y();', explanation: 'e' }];
+    const dry = applyFixes(root, p, true);
+    const wet = applyFixes(root, p, false);
+    expect(dry.applied).toEqual(wet.applied); // both: nothing
+    expect(dry.skipped[0]).toContain('ambiguous');
+    expect(readFileSync(join(root, 'a.ts'), 'utf8')).toBe('x();\nx();\n');
+  });
+});
