@@ -12,7 +12,10 @@ function fieldName(path: string): string {
 
 function endpoint(path: string): string {
   const m = path.match(/^paths\.(\S+?)\.(get|post|put|patch|delete|head|options)\./);
-  return m ? m[1]! : path;
+  if (m) return m[1]!;
+  const def = path.match(/^(?:components\.[a-zA-Z]+|\$defs|definitions)\.([^.]+)/);
+  if (def) return `shared schema ${def[1]!}`;
+  return path;
 }
 
 function parseJson(s: string | undefined): unknown {

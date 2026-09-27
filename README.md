@@ -49,7 +49,16 @@ By default `check` exits 1 on **breaking** changes. Loosen or tighten with `--fa
 api-sentinel check --fail-on none      # report-only: always exit 0
 api-sentinel check --fail-on additive  # strict: any change fails
 api-sentinel check --fail-on breaking  # default
+api-sentinel check --require-baseline  # exit 2 instead of a silent pass when an API has no baseline yet
+api-sentinel check --fail-on-changelog # also fail when the vendor just published deprecation prose
+api-sentinel check --format json       # machine-readable: { apis, skipped, changelogFindings, exitCode }
 ```
+
+Exit codes: `0` clean · `1` gate tripped · `2` usage/config error (including a missing baseline under `--require-baseline`).
+
+**No silent green.** An API without a previous snapshot is reported as `NOT being checked`, and `--require-baseline` turns that into a hard failure — a CI gate that passes because it checked nothing is worse than no gate.
+
+Running inside GitHub Actions, the report is also appended to the job summary (`$GITHUB_STEP_SUMMARY`) automatically.
 
 ## Live preview
 
@@ -82,7 +91,9 @@ Snapshots live in `snapshots/<name>/{previous,current}.json` — commit them so 
 
 Before diffing, both specs are normalized so refactors don't masquerade as changes:
 
-- local `$ref`s (`#/components/schemas/…`, `#/$defs/…`) are inlined and the (now duplicate) definition containers are dropped — extracting a schema into `components/` is a no-op (recursive refs are left intact; `securitySchemes` is kept).
+- local `$ref`s are inlined **under a size budget** and the now-duplicate definitions are dropped — extracting a schema into `components/` is a no-op (recursive and dangling refs are left intact).
+- **fat, widely-shared schemas are deliberately not inlined.** Real vendor specs reuse a few big schemas across hundreds of operations; inlining them turns one removed field into thousands of duplicate rows. They stay refs, the change is reported once at the definition, and the report maps it back to every endpoint that reaches it (`affects 37 endpoints: …`). On a ref-heavy 200-operation spec this is **137 ms / 17 MB / 20 rows** instead of 9.6 s / 541 MB / 4000 rows.
+- identical breaks on several endpoints collapse into one row (`distinct breaking changes: 1`), so the report is a task list, not a wall.
 - `oneOf` / `anyOf` / `allOf` branches are content-sorted — reshuffles are a no-op.
 - `enum`, `required`, and `tags` member order is normalized.
 - `parameters` arrays are keyed by `in:name`, so a parameter is tracked by identity: reordering is silent, while a **new required parameter** or an optional one **becoming required** is reported as breaking (and its name is fed to the code scanner).
@@ -132,7 +143,7 @@ your repo ──────────── token scan (file:line) <───
                        markdown report + exit code <───────┘
 ```
 
-Pure TypeScript, zero runtime deps except `yaml`. No LLM calls, no accounts, no lock-in.
+Pure TypeScript, zero runtime deps except `yaml`. No LLM calls, no accounts, no lock-in. [`templates/ci.yml`](templates/ci.yml) is the project's own CI (typecheck + tests + build on Node 20 and 22, plus an assertion that the demo check still exits 1) — copy it to `.github/workflows/ci.yml`.
 
 ## Security (LLM fix generation)
 
@@ -169,6 +180,7 @@ Configure the provider with env vars (any OpenAI-compatible endpoint):
 ## Dev
 
 ```bash
-npm test        # vitest, 128 tests, no network
+npm test        # vitest, 138 tests, no network
+npm run typecheck
 npm run build   # tsc -> dist/
 ```

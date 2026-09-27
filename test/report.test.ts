@@ -50,3 +50,50 @@ describe('explanations in report', () => {
     expect(md).toContain('code reading it now gets `undefined`');
   });
 });
+
+describe('grouping', () => {
+  const sameBreakOn = (url: string) => ({
+    kind: 'removed' as const,
+    path: `paths.${url}.get.responses.200.content.application/json.schema.properties.paid.type`,
+    before: '"boolean"',
+  });
+
+  it('collapses one shared break across endpoints into a single row', () => {
+    const md = buildReport({
+      apiName: 'acme',
+      specUrl: 'u',
+      fetchedAt: 't',
+      changes: [sameBreakOn('/v1/a'), sameBreakOn('/v1/b'), sameBreakOn('/v1/c')],
+      usages: [],
+    });
+    expect(md).toContain('- breaking: 3');
+    expect(md).toContain('distinct breaking changes: 1');
+    expect(md).toContain('affects 3 endpoints');
+    expect(md).toContain('`GET /v1/a`');
+    expect(md.match(/^- `removed`/gm)).toHaveLength(1);
+  });
+
+  it('keeps distinct breaks separate and shows the full path for a single hit', () => {
+    const md = buildReport({
+      apiName: 'acme',
+      specUrl: 'u',
+      fetchedAt: 't',
+      changes: [sameBreakOn('/v1/a')],
+      usages: [],
+    });
+    expect(md).toContain('paths./v1/a.get');
+    expect(md).not.toContain('distinct breaking changes');
+  });
+
+  it('annotates shared-definition changes with their callers', () => {
+    const md = buildReport({
+      apiName: 'acme',
+      specUrl: 'u',
+      fetchedAt: 't',
+      changes: [{ kind: 'removed', path: 'components.schemas.Charge.properties.paid.type', before: '"boolean"' }],
+      usages: [],
+      refUsage: { 'components.schemas.Charge': ['GET /v1/a', 'POST /v1/b'] },
+    });
+    expect(md).toContain('affects 2 endpoints: `GET /v1/a`, `POST /v1/b`');
+  });
+});

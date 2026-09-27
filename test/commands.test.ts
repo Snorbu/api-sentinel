@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -113,5 +113,34 @@ describe('--format json', () => {
     expect(payload.apis[0]!.breaking).toBe(3);
     expect(payload.apis[0]!.changes.length).toBeGreaterThan(0);
     expect(payload.exitCode).toBe(1);
+  });
+});
+
+describe('CI ergonomics', () => {
+  it('--require-baseline turns a silent pass into exit 2', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sentinel-base-'));
+    const cfg = join(root, 'apis.yaml');
+    writeFileSync(cfg, 'apis:\n  - name: acme\n    specUrl: https://acme.test/o.json\n');
+    const lenient = runCheck({ rootDir: root, repoDir: root, configPath: cfg });
+    expect(lenient.exitCode).toBe(0);
+    expect(lenient.report).toContain('NOT being checked');
+    const strict = runCheck({ rootDir: root, repoDir: root, configPath: cfg, requireBaseline: true });
+    expect(strict.exitCode).toBe(2);
+    expect(strict.report).toContain('--require-baseline');
+  });
+
+  it('--fail-on-changelog gates on new deprecation prose alone', () => {
+    const root = mkdtempSync(join(tmpdir(), 'sentinel-clg-'));
+    const dir = join(root, 'snapshots', 'acme');
+    mkdirSync(dir, { recursive: true });
+    const spec = '{"paths":{"/x":{"get":{"responses":{"200":{"description":"ok"}}}}}}';
+    writeFileSync(join(dir, 'previous.json'), spec);
+    writeFileSync(join(dir, 'current.json'), spec);
+    writeFileSync(join(dir, 'changelog.previous.txt'), 'v1 shipped\n');
+    writeFileSync(join(dir, 'changelog.current.txt'), 'v1 shipped\n/x will be removed 2027-01-01\n');
+    const cfg = join(root, 'apis.yaml');
+    writeFileSync(cfg, 'apis:\n  - name: acme\n    specUrl: https://acme.test/o.json\n');
+    expect(runCheck({ rootDir: root, repoDir: root, configPath: cfg }).exitCode).toBe(0);
+    expect(runCheck({ rootDir: root, repoDir: root, configPath: cfg, failOnChangelog: true }).exitCode).toBe(1);
   });
 });

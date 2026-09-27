@@ -120,8 +120,20 @@ async function runMain(argv: string[]): Promise<number> {
       apiName: args.api === undefined || String(args.api) === '' ? undefined : String(args.api),
       failOn: failOnRaw as 'breaking' | 'additive' | 'none' | undefined,
       format: args.format === 'json' ? 'json' : undefined,
+      requireBaseline: args['require-baseline'] !== undefined,
+      failOnChangelog: args['fail-on-changelog'] !== undefined,
     });
     if (args.out === undefined) console.log(res.report);
+    // running inside GitHub Actions: put the report on the job summary page
+    const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+    if (summaryFile !== undefined && summaryFile !== '') {
+      const { appendFileSync } = await import('node:fs');
+      try {
+        appendFileSync(summaryFile, `${res.report}\n`);
+      } catch {
+        // a broken summary file must never fail the check
+      }
+    }
     if (res.exitCode === 1 && args['notify-webhook'] !== undefined) {
       const { notifyWebhook } = await import('./notify.js');
       const sent = await notifyWebhook(String(args['notify-webhook']), res.report);
@@ -238,6 +250,7 @@ async function runMain(argv: string[]): Promise<number> {
   api-sentinel init      [--out apis.yaml] [--force]
   api-sentinel snapshot --config apis.yaml [--root .]
   api-sentinel check    --config apis.yaml --repo ./ [--out report.md] [--fail-on breaking|additive|none]
+                        [--require-baseline] [--fail-on-changelog] [--format json]
   api-sentinel check    --old old.json --new new.json --api demo --repo ./ [--out report.md] [--fail-on ...]
   api-sentinel preview  [--old o.json --new n.json | --config apis.yaml] [--repo ./] [--port 4173]`);
   return 2;

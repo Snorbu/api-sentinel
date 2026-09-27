@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalJson, canonicalizeSpec, normalizeSpec, resolveRefs } from '../src/semantic.js';
+import {
+  canonicalJson,
+  canonicalizeSpec,
+  definitionUsage,
+  normalizeSpec,
+  resolveRefs,
+  resolveRefsDetailed,
+  usageForPath,
+} from '../src/semantic.js';
 import { diffSpecs } from '../src/diff.js';
 import { classify } from '../src/classify.js';
 import { extractTokens } from '../src/scan.js';
@@ -102,20 +110,20 @@ describe('semantic diffing (v0.4)', () => {
   });
 });
 
-describe('pruneDefinitions', () => {
-  it('drops inlined definition containers without leaving empty husks', () => {
+describe('pruneInlinedDefinitions', () => {
+  it('drops containers whose definitions were all inlined, husks included', () => {
     const out = normalizeSpec({
       components: { schemas: { A: { type: 'string' } } },
-      $defs: { B: { type: 'number' } },
-      paths: {},
+      paths: { '/a': { get: { s: { $ref: '#/components/schemas/A' } } } },
     }) as any;
     expect(out.components).toBeUndefined();
-    expect(out.$defs).toBeUndefined();
+    expect(out.paths['/a'].get.s.type).toBe('string');
   });
 
-  it('keeps securitySchemes', () => {
+  it('keeps securitySchemes and un-inlined definitions', () => {
     const out = normalizeSpec({
       components: { schemas: { A: { type: 'string' } }, securitySchemes: { bearer: { type: 'http' } } },
+      paths: { '/a': { get: { s: { $ref: '#/components/schemas/A' } } } },
     }) as any;
     expect(out.components.securitySchemes.bearer.type).toBe('http');
     expect(out.components.schemas).toBeUndefined();
@@ -128,5 +136,70 @@ describe('pruneDefinitions', () => {
       paths: { '/c': { get: { x: { $ref: '#/components/schemas/X' } } } },
     };
     expect(diffSpecs(inlineSpec, refSpec)).toEqual([]);
+  });
+});
+
+describe('scale: fat shared schemas (real vendor specs)', () => {
+  const build = (drop: boolean) => {
+    const schemas: Record<string, unknown> = {};
+    for (let i = 0; i < 10; i++) {
+      const props: Record<string, unknown> = {};
+      for (let j = 0; j < 12; j++) props[`f${j}`] = { type: 'string' };
+      if (drop && i === 0) delete props.f0;
+      schemas[`Leaf${i}`] = { type: 'object', properties: props };
+    }
+    for (let i = 0; i < 10; i++) {
+      const props: Record<string, unknown> = {};
+      for (let j = 0; j < 10; j++) props[`p${j}`] = { $ref: `#/components/schemas/Leaf${j}` };
+      schemas[`Big${i}`] = { type: 'object', properties: props };
+    }
+    const paths: Record<string, unknown> = {};
+    for (let i = 0; i < 100; i++) {
+      paths[`/v1/r${i}`] = {
+        get: { responses: { '200': { content: { 'application/json': { schema: { $ref: `#/components/schemas/Big${i % 10}` } } } } } },
+      };
+    }
+    return { openapi: '3.0.3', paths, components: { schemas } };
+  };
+
+  it('does not fan one shared-field removal out into thousands of rows', () => {
+    const started = Date.now();
+    const changes = diffSpecs(build(false), build(true));
+    expect(changes.length).toBeLessThan(25); // pre-fix this was 1000s
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(changes.every((c) => c.path.endsWith('f0.type'))).toBe(true); // the real break, once per owner schema
+  });
+
+  it('maps a shared schema back to the endpoints that use it', () => {
+    const usage = definitionUsage(build(false));
+    const eps = usageForPath('components.schemas.Leaf0.properties.f0.type', usage);
+    expect(eps.length).toBe(100); // every operation reaches Leaf0 transitively
+    expect(eps).toContain('GET /v1/r0');
+    // and the schema a change is actually reported on maps to its own callers
+    expect(usageForPath('components.schemas.Big0.properties.p0.properties.f0.type', usage)).toHaveLength(10);
+  });
+
+  it('keeps oversized refs instead of inlining them', () => {
+    const { inlined, kept } = resolveRefsDetailed(build(false));
+    expect([...kept].some((r) => r.includes('Big'))).toBe(true);
+    expect([...inlined].some((r) => r.includes('Leaf'))).toBe(true);
+  });
+});
+
+describe('definitionUsage', () => {
+  it('is cycle safe', () => {
+    const spec = {
+      paths: { '/a': { post: { body: { $ref: '#/components/schemas/Node' } } } },
+      components: { schemas: { Node: { properties: { next: { $ref: '#/components/schemas/Node' } } } } },
+    };
+    expect(definitionUsage(spec)['components.schemas.Node']).toEqual(['POST /a']);
+  });
+
+  it('ignores non-method keys on a path item', () => {
+    const spec = {
+      paths: { '/a': { summary: 'x', get: { r: { $ref: '#/components/schemas/A' } } } },
+      components: { schemas: { A: { type: 'string' } } },
+    };
+    expect(definitionUsage(spec)).toEqual({ 'components.schemas.A': ['GET /a'] });
   });
 });

@@ -1,0 +1,26 @@
+name: ci
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # the demo must keep failing CI on breaking changes — that is the product
+      - name: demo check exits 1
+        run: |
+          node dist/cli.js check --old test/fixtures/spec-v1.json --new test/fixtures/spec-v2.json \
+            --api demo --repo demo && { echo "expected exit 1"; exit 1; } || test $? -eq 1

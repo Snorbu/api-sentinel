@@ -8,7 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "yaml": "^2.4.0"
@@ -39,5 +42,11 @@
   ],
   "engines": {
     "node": ">=20"
-  }
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ]
 }
